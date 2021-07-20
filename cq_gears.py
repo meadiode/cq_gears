@@ -468,7 +468,7 @@ class SpurGear:
 
 
 
-class HerringBoneGear(SpurGear):
+class HerringboneGear(SpurGear):
 
     def _build_faces(self):
         faces1 = self._build_profile(0.0, self.twist_angle,
