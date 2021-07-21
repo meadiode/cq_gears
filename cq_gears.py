@@ -493,8 +493,54 @@ class SpurGear:
         return body
 
 
+    def _make_spokes(self, body, hub_d, recess_d, n_spokes,
+                     spoke_width, spoke_fillet):
+        if n_spokes is None:
+            return body
+        assert n_spokes > 0, 'Number of spokes should be > 0'
+        assert spoke_width is not None, 'Spoke width is not set'
+        assert recess_d is not None, 'Recess diameter is not set'
+
+        if hub_d is None:
+            r1 = spoke_width / 2.0
+        else:
+            r1 = max(spoke_width / 2.0, hub_d / 2.0)
+
+        r2 = recess_d / 2.0
+
+        r1 += 0.001
+        r2 -= 0.001
+
+        tau = np.pi * 2.0 / n_spokes
+        a1 = np.arcsin((spoke_width / 2.0) / (hub_d / 2.0))
+        a2 = np.arcsin((spoke_width / 2.0) / (recess_d / 2.0))
+        a3 = tau - a2
+        a4 = tau - a1
+
+        cutout = (cq.Workplane('XY').workplane(offset=-0.1)
+                  .moveTo(np.cos(a1) * r1, np.sin(a1) * r1)
+                  .lineTo(np.cos(a2) * r2, np.sin(a2) * r2)
+                  .radiusArc((np.cos(a3) * r2, np.sin(a3) * r2), -r2)
+                  .lineTo(np.cos(a4) * r1, np.sin(a4) * r1)
+                  .radiusArc((np.cos(a1) * r1, np.sin(a1) * r1), r1)
+                  .close()
+                  .extrude(self.width + 1.0)
+                  )
+
+        if spoke_fillet is not None:
+            cutout = cutout.edges('|Z').fillet(spoke_fillet)
+
+        for i in range(n_spokes):
+            body = body.cut(cutout.rotate((0.0, 0.0, 0.0),
+                                          (0.0, 0.0, 1.0),
+                                          np.degrees(tau * i)))
+
+        return body
+
+
     def build(self, bore_d=None, missing_teeth=None,
-              hub_d=None, hub_length=None, recess_d=None, recess=None):
+              hub_d=None, hub_length=None, recess_d=None, recess=None,
+              n_spokes=None, spoke_width=None, spoke_fillet=None):
         faces = self._build_faces()
 
         shell = make_shell(faces)
@@ -504,6 +550,9 @@ class SpurGear:
         body = self._make_missing_teeth(body, missing_teeth)
         body = self._make_recess(body, hub_d, recess_d, recess)
         body = self._make_hub(body, hub_d, hub_length, bore_d)
+        body = self._make_spokes(body, hub_d, recess_d, n_spokes,
+                                 spoke_width, spoke_fillet)
+
 
         return body
 
