@@ -455,7 +455,46 @@ class SpurGear:
         return body
 
 
-    def build(self, bore_d=None, missing_teeth=None):
+    def _make_recess(self, body, hub_d, recess_d, recess):
+        if recess is None:
+            return body
+
+        assert recess_d is not None, 'Recess diameter is not set'
+
+        body = (cq.Workplane('XY')
+                .add(body)
+                .faces('>Z')
+                .workplane())
+
+        if hub_d is not None:
+            body = body.circle(hub_d / 2.0)
+
+        body = body.circle(recess_d / 2.0).cutBlind(-recess)
+
+        return body
+
+
+    def _make_hub(self, body, hub_d, hub_length, bore_d):
+        if hub_length is None:
+            return body
+
+        assert hub_d is not None, 'Hub diameter is not set'
+
+        body = (cq.Workplane('XY')
+                .add(body)
+                .faces('>Z')
+                .workplane())
+
+        if bore_d is not None:
+            body = body.circle(bore_d / 2.0)
+
+        body = body.circle(hub_d / 2.0).extrude(hub_length)
+
+        return body
+
+
+    def build(self, bore_d=None, missing_teeth=None,
+              hub_d=None, hub_length=None, recess_d=None, recess=None):
         faces = self._build_faces()
 
         shell = make_shell(faces)
@@ -463,6 +502,8 @@ class SpurGear:
 
         body = self._make_bore(body, bore_d)
         body = self._make_missing_teeth(body, missing_teeth)
+        body = self._make_recess(body, hub_d, recess_d, recess)
+        body = self._make_hub(body, hub_d, hub_length, bore_d)
 
         return body
 
