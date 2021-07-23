@@ -508,8 +508,8 @@ class SpurGear:
 
         r2 = recess_d / 2.0
 
-        r1 += 0.001
-        r2 -= 0.001
+        r1 += 0.0001
+        r2 -= 0.0001
 
         tau = np.pi * 2.0 / n_spokes
         a1 = np.arcsin((spoke_width / 2.0) / (hub_d / 2.0))
@@ -540,7 +540,8 @@ class SpurGear:
 
     def build(self, bore_d=None, missing_teeth=None,
               hub_d=None, hub_length=None, recess_d=None, recess=None,
-              n_spokes=None, spoke_width=None, spoke_fillet=None):
+              n_spokes=None, spoke_width=None, spoke_fillet=None,
+              spokes_id=None, spokes_od=None):
         faces = self._build_faces()
 
         shell = make_shell(faces)
@@ -550,7 +551,14 @@ class SpurGear:
         body = self._make_missing_teeth(body, missing_teeth)
         body = self._make_recess(body, hub_d, recess_d, recess)
         body = self._make_hub(body, hub_d, hub_length, bore_d)
-        body = self._make_spokes(body, hub_d, recess_d, n_spokes,
+        
+        if spokes_id is None:
+            spokes_id = hub_d
+
+        if spokes_od is None:
+            spokes_od = recess_d
+
+        body = self._make_spokes(body, spokes_id, spokes_od, n_spokes,
                                  spoke_width, spoke_fillet)
 
 
