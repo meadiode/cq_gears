@@ -11,20 +11,24 @@ class SpurGear:
 
     def __init__(self, module, teeth_number, width,
                  pressure_angle=20.0, helix_angle=0.0, clearance=0.0,
-                 curve_points=20, surface_splines=5):
+                 backlash=0.0, curve_points=20, surface_splines=5):
         self.m = m = module
         self.z = z = teeth_number
         self.a0 = a0 = np.radians(pressure_angle)
-        self.c = c = clearance
+        self.clearance = clearance
+        self.backlash = backlash
         self.curve_points = curve_points
         self.helix_angle = np.radians(helix_angle)
         self.width = width
 
+
         d0 = m * z         # pitch diameter
-        da = m * (z + 2.0) # addendum circle diameter
-        dd = m * (z - 2.0) - 2.0 * c # dedendum circle diameter
-        s0 = m * (np.pi / 2.0 - c * np.tan(a0)) # tooth thickness on
-                                                # the pitch circle
+        adn = 1.0 / (z / d0)  # addendum
+        ddn = 1.25 / (z / d0) # dedendum
+        da = d0 + 2.0 * adn # addendum circle diameter
+        dd = d0 - 2.0 * adn - 2.0 * clearance # dedendum circle diameter
+        s0 = m * (np.pi / 2.0 - backlash * np.tan(a0)) # tooth thickness on
+                                                       # the pitch circle
         inv_a0 = np.tan(a0) - a0
 
         self.r0 = r0 = d0 / 2.0 # pitch radius
@@ -311,27 +315,27 @@ class SpurGear:
         return body
 
 
-    def _make_spokes(self, body, hub_d, recess_d, n_spokes,
+    def _make_spokes(self, body, spokes_id, spokes_od, n_spokes,
                      spoke_width, spoke_fillet):
         if n_spokes is None:
             return body
-        assert n_spokes > 0, 'Number of spokes should be > 0'
+        assert n_spokes > 1, 'Number of spokes must be > 1'
         assert spoke_width is not None, 'Spoke width is not set'
-        assert recess_d is not None, 'Recess diameter is not set'
+        assert spokes_od is not None, 'Outer spokes diameter is not set'
 
-        if hub_d is None:
+        if spokes_id is None:
             r1 = spoke_width / 2.0
         else:
-            r1 = max(spoke_width / 2.0, hub_d / 2.0)
+            r1 = max(spoke_width / 2.0, spokes_id / 2.0)
 
-        r2 = recess_d / 2.0
+        r2 = spokes_od / 2.0
 
         r1 += 0.0001
         r2 -= 0.0001
 
         tau = np.pi * 2.0 / n_spokes
-        a1 = np.arcsin((spoke_width / 2.0) / (hub_d / 2.0))
-        a2 = np.arcsin((spoke_width / 2.0) / (recess_d / 2.0))
+        a1 = np.arcsin((spoke_width / 2.0) / (spokes_id / 2.0))
+        a2 = np.arcsin((spoke_width / 2.0) / (spokes_od / 2.0))
         a3 = tau - a2
         a4 = tau - a1
 
@@ -342,8 +346,7 @@ class SpurGear:
                   .lineTo(np.cos(a4) * r1, np.sin(a4) * r1)
                   .radiusArc((np.cos(a1) * r1, np.sin(a1) * r1), r1)
                   .close()
-                  .extrude(self.width + 1.0)
-                  )
+                  .extrude(self.width + 1.0))
 
         if spoke_fillet is not None:
             cutout = cutout.edges('|Z').fillet(spoke_fillet)
