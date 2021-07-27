@@ -3,32 +3,210 @@
 import numpy as np
 import cadquery as cq
 
-from .utils import (circle3d_by3points, rotation_matrix, make_spline_approx,
-                    make_shell)
+from OCP.Precision import Precision
+from OCP.TColgp import TColgp_HArray2OfPnt, TColgp_HArray1OfPnt
+from OCP.GeomAPI import (GeomAPI_PointsToBSplineSurface,
+                         GeomAPI_PointsToBSpline)
+from OCP.BRepBuilderAPI import (BRepBuilderAPI_MakeFace,
+                                BRepBuilderAPI_Sewing)
+
+
+#
+# Math utility functions
+#
+
+def sphere_to_cartesian(r, gamma, theta):
+    '''Convert spherical coordinates to cartesian
+       r - sphere radius
+       gamma - polar angle
+       theta - azimuth angle
+       return - cartesian coordinates
+    '''
+    return (r * np.sin(gamma) * np.sin(theta),
+            r * np.sin(gamma) * np.cos(theta),
+            r * np.cos(gamma))
+
+
+def s_arc(sr, c_gamma, c_theta, r_delta, start, end, n=32):
+    '''Get arc points plotted on a sphere's surface
+       sr - sphere radius
+       c_gamma - polar angle of the circle's center
+       c_theta - azimuth angle of the circle's center
+       r_delta - angle between OC and OP, where O is sphere's center,
+                 C is the circle's center, P is any point on the circle
+       start - arc start angle
+       end - arc end angle
+       n - number of points
+       return - circle points
+    '''
+    t = np.expand_dims(np.linspace(start, end, n), axis=1)
+    a = sphere_to_cartesian(1.0, c_gamma + r_delta, c_theta)
+    k = sphere_to_cartesian(1.0, c_gamma, c_theta)
+    c = np.cos(t) * a + np.sin(t) * np.cross(k, a) + \
+        np.dot(k, a) * (1.0 - np.cos(t)) * k
+    c = c * sr
+    return [dim.squeeze() for dim in np.hsplit(c, 3)]
+
+
+def s_inv(gamma0, gamma):
+    phi = np.arccos(np.tan(gamma0) / np.tan(gamma))    
+    return np.arccos(np.cos(gamma) / np.cos(gamma0)) / np.sin(gamma0) - phi
+
+
+def circle3d_by3points(a, b, c):
+    u = b - a
+    w = np.cross(c - a, u)
+    u = u / np.linalg.norm(u)
+    w = w / np.linalg.norm(w)
+    v = np.cross(w, u)
+    
+    bx = np.dot(b - a, u)
+    cx, cy = np.dot(c - a, u), np.dot(c - a, v)
+    
+    h = ((cx - bx / 2.0) ** 2 + cy ** 2 - (bx / 2.0) ** 2) / (2.0 * cy)
+    cc = a + u * (bx / 2.0) + v * h
+    r = np.linalg.norm(a - cc)
+
+    return r, cc
+
+
+def rotation_matrix(axis, alpha):
+    ux, uy, uz = axis
+    sina, cosa = np.sin(alpha), np.cos(alpha)
+    r_mat = np.array((
+        (cosa + (1.0 - cosa) * ux ** 2,
+         ux * uy * (1.0 - cosa) - uz * sina,
+         ux * uz * (1.0 - cosa) + uy * sina),
+        (uy * ux * (1.0 - cosa) + uz * sina,
+         cosa + (1.0 - cosa) * uy ** 2,
+         uy * uz * (1.0 - cosa) - ux * sina),
+        (uz * ux * (1.0 - cosa) - uy * sina,
+         uz * uy * (1.0 - cosa) + ux * sina,
+         cosa + (1.0 - cosa) * uz ** 2),
+    ))
+
+    return r_mat
+
+
+def angle_between(o, a, b):
+    p = a - o
+    q = b - o
+    return np.arccos(np.dot(p, q) / (np.linalg.norm(p) * np.linalg.norm(q)))
+
+
+def project_to_xy_from_sphere_center(pts, sphere_r):
+    gammas = np.arccos(np.dot(pts, np.array((0.0, 0.0, 1.0))) / \
+                       np.linalg.norm(pts, axis=1))
+    thetas = np.arctan2(pts[:, 0], pts[:, 1])
+    radiuses = sphere_r /  np.cos(gammas)
+    proj_pts = np.dstack(sphere_to_cartesian(radiuses,
+                                             gammas, thetas)).squeeze()
+    
+    return proj_pts
+
+
+def intersection_ray_xy(points_a, points_b):
+    ''' Get intersection point between a ray defined by points a and b
+        and the plane XY
+    '''
+    ab = points_b - points_a
+    t = points_a[:, 2] / -ab[:, 2]
+    res = points_a + ab * np.expand_dims(t, 1)
+    return res
+
+
+#
+# OpenCascade utility functions
+#
+
+
+def make_spline_approx(points, tol=1e-2, smoothing=None, minDeg=1, maxDeg=3):
+    '''
+    Approximate a surface through the provided points.
+    '''
+    points_ = TColgp_HArray2OfPnt(1, len(points), 1, len(points[0]))
+
+    for i, vi in enumerate(points):
+        for j, v in enumerate(vi):
+            v = cq.Vector(*v)
+            points_.SetValue(i + 1, j + 1, v.toPnt())
+
+    if smoothing:
+        spline_builder = GeomAPI_PointsToBSplineSurface(
+            points_, *smoothing, DegMax=maxDeg, Tol3D=tol
+        )
+    else:
+        spline_builder = GeomAPI_PointsToBSplineSurface(
+            points_, DegMin=minDeg, DegMax=maxDeg, Tol3D=tol
+        )
+
+    if not spline_builder.IsDone():
+        raise ValueError("B-spline approximation failed")
+
+    spline_geom = spline_builder.Surface()
+
+    return cq.Face(BRepBuilderAPI_MakeFace(spline_geom,
+                                           Precision.Confusion_s()).Face())
+
+
+def make_spline_approx_1d(points, tol=1e-3, smoothing=None, minDeg=1, maxDeg=6):
+    '''
+    Approximate a spline through the provided points.
+    '''
+    points_ = TColgp_HArray1OfPnt(1, len(points))
+    
+    for ix, v in enumerate(points):
+        v = cq.Vector(*v)
+        points_.SetValue(ix + 1, v.toPnt())
+
+    if smoothing:
+        spline_builder = GeomAPI_PointsToBSpline(
+                            points_, *smoothing, DegMax=maxDeg, Tol3D=tol
+                         )
+    else:
+        spline_builder = GeomAPI_PointsToBSpline(
+                            points_, DegMin=minDeg, DegMax=maxDeg, Tol3D=tol
+                         )
+
+    if not spline_builder.IsDone():
+        raise ValueError("B-spline approximation failed")
+
+    spline_geom = spline_builder.Curve()
+
+    return cq.Edge(BRepBuilderAPI_MakeEdge(spline_geom).Edge())
+
+
+def make_shell(faces):
+    shell_builder = BRepBuilderAPI_Sewing(tolerance=1e-2)
+
+    for face in faces:
+        shell_builder.Add(face.wrapped)
+
+    shell_builder.Perform()
+    s = shell_builder.SewedShape()
+
+    return cq.Shell(s)
+
 
 
 class SpurGear:
 
     def __init__(self, module, teeth_number, width,
                  pressure_angle=20.0, helix_angle=0.0, clearance=0.0,
-                 backlash=0.0, curve_points=20, surface_splines=5):
+                 curve_points=20, surface_splines=5):
         self.m = m = module
         self.z = z = teeth_number
         self.a0 = a0 = np.radians(pressure_angle)
-        self.clearance = clearance
-        self.backlash = backlash
+        self.c = c = clearance
         self.curve_points = curve_points
         self.helix_angle = np.radians(helix_angle)
         self.width = width
 
-
         d0 = m * z         # pitch diameter
-        adn = 1.0 / (z / d0)  # addendum
-        ddn = 1.25 / (z / d0) # dedendum
-        da = d0 + 2.0 * adn # addendum circle diameter
-        dd = d0 - 2.0 * ddn - 2.0 * clearance # dedendum circle diameter
-        s0 = m * (np.pi / 2.0 - backlash * np.tan(a0)) # tooth thickness on
-                                                       # the pitch circle
+        da = m * (z + 2.0) # addendum circle diameter
+        dd = m * (z - 2.0) - 2.0 * c # dedendum circle diameter
+        s0 = m * (np.pi / 2.0 - c * np.tan(a0)) # tooth thickness on
+                                                # the pitch circle
         inv_a0 = np.tan(a0) - a0
 
         self.r0 = r0 = d0 / 2.0 # pitch radius
@@ -315,54 +493,8 @@ class SpurGear:
         return body
 
 
-    def _make_spokes(self, body, spokes_id, spokes_od, n_spokes,
-                     spoke_width, spoke_fillet):
-        if n_spokes is None:
-            return body
-        assert n_spokes > 1, 'Number of spokes must be > 1'
-        assert spoke_width is not None, 'Spoke width is not set'
-        assert spokes_od is not None, 'Outer spokes diameter is not set'
-
-        if spokes_id is None:
-            r1 = spoke_width / 2.0
-        else:
-            r1 = max(spoke_width / 2.0, spokes_id / 2.0)
-
-        r2 = spokes_od / 2.0
-
-        r1 += 0.0001
-        r2 -= 0.0001
-
-        tau = np.pi * 2.0 / n_spokes
-        a1 = np.arcsin((spoke_width / 2.0) / (spokes_id / 2.0))
-        a2 = np.arcsin((spoke_width / 2.0) / (spokes_od / 2.0))
-        a3 = tau - a2
-        a4 = tau - a1
-
-        cutout = (cq.Workplane('XY').workplane(offset=-0.1)
-                  .moveTo(np.cos(a1) * r1, np.sin(a1) * r1)
-                  .lineTo(np.cos(a2) * r2, np.sin(a2) * r2)
-                  .radiusArc((np.cos(a3) * r2, np.sin(a3) * r2), -r2)
-                  .lineTo(np.cos(a4) * r1, np.sin(a4) * r1)
-                  .radiusArc((np.cos(a1) * r1, np.sin(a1) * r1), r1)
-                  .close()
-                  .extrude(self.width + 1.0))
-
-        if spoke_fillet is not None:
-            cutout = cutout.edges('|Z').fillet(spoke_fillet)
-
-        for i in range(n_spokes):
-            body = body.cut(cutout.rotate((0.0, 0.0, 0.0),
-                                          (0.0, 0.0, 1.0),
-                                          np.degrees(tau * i)))
-
-        return body
-
-
     def build(self, bore_d=None, missing_teeth=None,
-              hub_d=None, hub_length=None, recess_d=None, recess=None,
-              n_spokes=None, spoke_width=None, spoke_fillet=None,
-              spokes_id=None, spokes_od=None):
+              hub_d=None, hub_length=None, recess_d=None, recess=None):
         faces = self._build_faces()
 
         shell = make_shell(faces)
@@ -372,16 +504,6 @@ class SpurGear:
         body = self._make_missing_teeth(body, missing_teeth)
         body = self._make_recess(body, hub_d, recess_d, recess)
         body = self._make_hub(body, hub_d, hub_length, bore_d)
-        
-        if spokes_id is None:
-            spokes_id = hub_d
-
-        if spokes_od is None:
-            spokes_od = recess_d
-
-        body = self._make_spokes(body, spokes_id, spokes_od, n_spokes,
-                                 spoke_width, spoke_fillet)
-
 
         return body
 
