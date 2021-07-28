@@ -98,3 +98,66 @@ class RingGear(SpurGear):
         
         self.troot_x = bcxy[0] + bcr * np.cos(t)
         self.troot_y = bcxy[1] + bcr * np.sin(t)
+
+
+    def _build_horizontal_face(self):
+        tooth_splines = []
+
+        for x, y in zip((self.tsidel_x, self.ttip_x,
+                         self.tsider_x, self.troot_x),
+                        (self.tsidel_y, self.ttip_y,
+                         self.tsider_y, self.troot_y)):
+            pts = []
+
+            for pt in np.dstack((x, y)).squeeze():
+                pts.append(cq.Vector(tuple(pt)))
+
+            tooth_splines.append(cq.Edge.makeSpline(pts))
+
+        tooth_wire = cq.Wire.assembleEdges(tooth_splines)
+
+        wires = []
+        for i in range(self.z): 
+            wires.append(tooth_wire.rotate((0.0, 0.0, 0.0),
+                                           (0.0, 0.0, 1.0),
+                                           np.degrees(self.tau) * i))
+
+        rim = cq.Wire.makeCircle(self.rim_r,
+                                 cq.Vector(0.0, 0.0, 0.0),
+                                 cq.Vector(0.0, 0.0, 1.0))
+        
+        wr = cq.Wire.combine(wires)
+        face = cq.Face.makeFromWires(rim, wr)
+
+        return face
+
+
+    def _build_rim_face(self):
+        w1 = cq.Wire.makeCircle(self.rim_r,
+                                cq.Vector(0.0, 0.0, 0.0),
+                                cq.Vector(0.0, 0.0, 1.0))
+        w2 = cq.Wire.makeCircle(self.rim_r,
+                                cq.Vector(0.0, 0.0, self.width),
+                                cq.Vector(0.0, 0.0, 1.0))
+
+        face = cq.Face.makeRuledSurface(w1, w2)
+
+        return face
+
+
+    def _build_faces(self):
+        faces = super(RingGear, self)._build_faces()
+        faces.append(self._build_rim_face())
+
+        return faces
+
+
+    def build(self, missing_teeth=None):
+        faces = self._build_faces()
+
+        shell = make_shell(faces)
+        body = cq.Solid.makeSolid(shell)
+
+        # body = self._make_missing_teeth(body, missing_teeth)
+
+        return body
