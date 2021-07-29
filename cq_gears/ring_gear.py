@@ -158,6 +158,24 @@ class RingGear(SpurGear):
         shell = make_shell(faces)
         body = cq.Solid.makeSolid(shell)
 
-        # body = self._make_missing_teeth(body, missing_teeth)
-
         return body
+
+
+class HerringboneRingGear(RingGear):
+
+
+    def _build_faces(self):
+        faces1 = self._build_profile(0.0, self.twist_angle,
+                                     0.0, self.width / 2.0)
+        faces2 = self._build_profile(self.twist_angle, 0.0,
+                                     self.width / 2.0, self.width / 2.0)
+        faces = faces1 + faces2
+
+        bottom = self._build_horizontal_face()
+        top = bottom.translate((0.0, 0.0, self.width))
+        faces.append(bottom)
+        faces.append(top)
+
+        faces.append(self._build_rim_face())
+
+        return faces
