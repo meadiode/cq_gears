@@ -221,7 +221,7 @@ class PlanetaryGearset:
         self.orbit_r = self.sun.r0 + self.planet.r0
         self.n_planets = n_planets
 
-        if (sun_teeth_number % n_planets) or (planet_teeth_number % n_planets):
+        if ((sun_teeth_number + planet_teeth_number) % n_planets):
            if (sun_teeth_number % n_planets) or (ring_z % n_planets):
             warnings.warn('Planet gears being spaced evenly probably won\'t '
                           'mesh properly (if at all) with the given number of '
@@ -238,6 +238,10 @@ class PlanetaryGearset:
         if sun:
             args = {**kv_args, **sun_build_args}
             sun = self.sun.build(**args)
+
+            if (self.planet.z % 2) != 0:
+                sun = sun.rotate((0.0, 0.0, 0.0), (0.0, 0.0, 1.0),
+                                   np.degrees(self.sun.tau / 2.0))
             gearset.add(sun)
 
 
