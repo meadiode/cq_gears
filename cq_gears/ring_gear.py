@@ -2,11 +2,12 @@
 
 import numpy as np
 import cadquery as cq
+import warnings
 
 from .utils import (circle3d_by3points, rotation_matrix, make_spline_approx,
                     make_shell)
 
-from .spur_gear import SpurGear
+from .spur_gear import SpurGear, HerringboneGear
 
 
 
@@ -73,7 +74,7 @@ class RingGear(SpurGear):
         self.tsider_y = (np.sin(-phi) * r)[::-1]
 
 
-        # Calculate tooth root points - an arc starting at the right side of
+        # Calculate tooth root points - an arc that starts at the right side of
         # the tooth and goes to the left side of the next tooth. The mid-point
         # of that arc lies on the dedendum circle.
         rho = tau - phi[0] * 2.0
@@ -152,7 +153,7 @@ class RingGear(SpurGear):
         return faces
 
 
-    def build(self, missing_teeth=None):
+    def build(self):
         faces = self._build_faces()
 
         shell = make_shell(faces)
@@ -179,3 +180,97 @@ class HerringboneRingGear(RingGear):
         faces.append(self._build_rim_face())
 
         return faces
+
+
+class PlanetaryGearset:
+
+    gear_cls = SpurGear
+    ring_gear_cls = RingGear
+
+    def __init__(self, module, sun_teeth_number, planet_teeth_number, width,
+                 rim_width, n_planets, pressure_angle=20.0,
+                 helix_angle=0.0, clearance=0.0, backlash=0.0, curve_points=20,
+                 surface_splines=5):
+
+        ring_z = sun_teeth_number + planet_teeth_number * 2
+
+        self.sun = self.gear_cls(module, sun_teeth_number, width,
+                                 pressure_angle=pressure_angle,
+                                 helix_angle=helix_angle,
+                                 clearance=clearance,
+                                 backlash=backlash,
+                                 curve_points=curve_points,
+                                 surface_splines=surface_splines)
+
+        self.planet = self.gear_cls(module, planet_teeth_number, width,
+                                    pressure_angle=pressure_angle,
+                                    helix_angle=-helix_angle,
+                                    clearance=clearance,
+                                    backlash=backlash,
+                                    curve_points=curve_points,
+                                    surface_splines=surface_splines)
+
+        self.ring = self.ring_gear_cls(module, ring_z, width, rim_width,
+                                       pressure_angle=pressure_angle,
+                                       helix_angle=-helix_angle,
+                                       clearance=clearance,
+                                       backlash=backlash,
+                                       curve_points=curve_points,
+                                       surface_splines=surface_splines)
+
+        self.orbit_r = self.sun.r0 + self.planet.r0
+        self.n_planets = n_planets
+
+        if (sun_teeth_number % n_planets) or (planet_teeth_number % n_planets):
+           if (sun_teeth_number % n_planets) or (ring_z % n_planets):
+            warnings.warn('Planet gears being spaced evenly probably won\'t '
+                          'mesh properly (if at all) with the given number of '
+                          'teeth for the sun/planet gears and the number '
+                          'of planets')
+
+
+
+    def build(self, sun=True, planets=True, ring=True,
+              sun_build_args={}, planet_build_args={}, **kv_args):
+
+        gearset = cq.Workplane('XY')
+
+        if sun:
+            args = {**kv_args, **sun_build_args}
+            sun = self.sun.build(**args)
+            gearset.add(sun)
+
+
+        if planets and self.n_planets > 0:
+            planet_a = np.pi * 2.0 / self.n_planets
+
+            if isinstance(planets, (list, tuple)):
+                tobuild = planets
+            else:
+                tobuild = [True, ] * self.n_planets
+            args = {**kv_args, **planet_build_args}
+
+            for i in range(self.n_planets):
+                if not tobuild[i]:
+                    continue
+
+                planet = (self.planet.build(**args)
+                          .rotate((0.0, 0.0, 0.0), (0.0, 0.0, 1.0),
+                                  np.degrees(self.planet.tau / 2.0))
+                          .translate((np.cos(i * planet_a) * self.orbit_r,
+                                      np.sin(i * planet_a) * self.orbit_r,
+                                      0.0)))
+                gearset.add(planet)
+
+        if ring:
+            ring = (self.ring.build()
+                    .rotate((0.0, 0.0, 0.0), (0.0, 0.0, 1.0),
+                            np.degrees(self.ring.tau / 2.0)))
+            gearset.add(ring)
+
+        return gearset
+
+
+class HerringbonePlanetaryGearset(PlanetaryGearset):
+    gear_cls = HerringboneGear
+    ring_gear_cls = HerringboneRingGear

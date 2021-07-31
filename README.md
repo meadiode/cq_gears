@@ -9,5 +9,6 @@ As for now it can generate the following types of gears:
 - Helical gear
 - Herringbone gear
 - Ring gear (helical/herringbone versions too)
+- Planetary gearsets
 
-See *spur_gear_example* Jupyter notebook for basic examples
+See *basic_examples* Jupyter notebook for basic examples
