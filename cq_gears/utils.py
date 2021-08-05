@@ -30,14 +30,14 @@ def sphere_to_cartesian(r, gamma, theta):
 def s_arc(sr, c_gamma, c_theta, r_delta, start, end, n=32):
     '''Get arc points plotted on a sphere's surface
        sr - sphere radius
-       c_gamma - polar angle of the circle's center
-       c_theta - azimuth angle of the circle's center
+       c_gamma - polar angle of the arc's center
+       c_theta - azimuth angle of the arc's center
        r_delta - angle between OC and OP, where O is sphere's center,
-                 C is the circle's center, P is any point on the circle
+                 C is the arc's center, P is any point on the arc
        start - arc start angle
        end - arc end angle
        n - number of points
-       return - circle points
+       return - arc points
     '''
     t = np.expand_dims(np.linspace(start, end, n), axis=1)
     a = sphere_to_cartesian(1.0, c_gamma + r_delta, c_theta)
@@ -49,11 +49,22 @@ def s_arc(sr, c_gamma, c_theta, r_delta, start, end, n=32):
 
 
 def s_inv(gamma0, gamma):
+    '''Spherical involute curve function
+       gamma0 - base polar angle that corresponds to the pitch cone 
+       gamma - polar angle(s) of point(s) lying on the curve, for which
+               corresponding azimuth angle(s) to be calculated
+       return - azimuth angle(s) of the point(s) lying on the curve
+
+    ''' 
     phi = np.arccos(np.tan(gamma0) / np.tan(gamma))    
     return np.arccos(np.cos(gamma) / np.cos(gamma0)) / np.sin(gamma0) - phi
 
 
 def circle3d_by3points(a, b, c):
+    '''Find a circle in 3d space defined by 3 points
+       a, b, c - 3d points a,b and c which are lying on the circle to find
+       return - circle's radius, circle's center 
+    '''
     u = b - a
     w = np.cross(c - a, u)
     u = u / np.linalg.norm(u)
@@ -71,6 +82,11 @@ def circle3d_by3points(a, b, c):
 
 
 def rotation_matrix(axis, alpha):
+    '''Construct a 3d rotation transform matrix
+       axis - a 3d-axis to rotate about
+       alpha - an angle to rotate to
+       return - an array of the shape (3, 3) representing resulting matrix
+    '''
     ux, uy, uz = axis
     sina, cosa = np.sin(alpha), np.cos(alpha)
     r_mat = np.array((
@@ -89,6 +105,10 @@ def rotation_matrix(axis, alpha):
 
 
 def angle_between(o, a, b):
+    '''Find an angle between two vectors - OA and OB
+       o, a, b - 3d-points defining the vectors OA and OB
+       return - an angle between those two vectors 
+    '''
     p = a - o
     q = b - o
     return np.arccos(np.dot(p, q) / (np.linalg.norm(p) * np.linalg.norm(q)))
@@ -107,7 +127,7 @@ def project_to_xy_from_sphere_center(pts, sphere_r):
 
 def intersection_ray_xy(points_a, points_b):
     ''' Get intersection point between a ray defined by points a and b
-        and the plane XY
+        and the plane XY0
     '''
     ab = points_b - points_a
     t = points_a[:, 2] / -ab[:, 2]

@@ -27,8 +27,8 @@ class RingGear(SpurGear):
         self.rim_width = rim_width
 
         d0 = m * z         # pitch diameter
-        adn = 1.0 / (z / d0)  # addendum
-        ddn = 1.25 / (z / d0) # dedendum
+        adn = self.ka / (z / d0) # addendum
+        ddn = self.kd / (z / d0) # dedendum
         da = d0 - 2.0 * adn # addendum circle diameter
         dd = d0 + 2.0 * ddn + 2.0 * clearance # dedendum circle diameter
         s0 = m * (np.pi / 2.0 + backlash * np.tan(a0)) # tooth thickness on

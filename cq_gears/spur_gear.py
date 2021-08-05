@@ -9,6 +9,9 @@ from .utils import (circle3d_by3points, rotation_matrix, make_spline_approx,
 
 class SpurGear:
 
+    ka = 1.0  # addendum coefficient
+    kd = 1.25 # dedendum coefficient
+
     def __init__(self, module, teeth_number, width,
                  pressure_angle=20.0, helix_angle=0.0, clearance=0.0,
                  backlash=0.0, curve_points=20, surface_splines=5):
@@ -23,8 +26,8 @@ class SpurGear:
 
 
         d0 = m * z         # pitch diameter
-        adn = 1.0 / (z / d0)  # addendum
-        ddn = 1.25 / (z / d0) # dedendum
+        adn = self.ka / (z / d0) # addendum
+        ddn = self.kd / (z / d0) # dedendum
         da = d0 + 2.0 * adn # addendum circle diameter
         dd = d0 - 2.0 * ddn - 2.0 * clearance # dedendum circle diameter
         s0 = m * (np.pi / 2.0 - backlash * np.tan(a0)) # tooth thickness on
@@ -68,7 +71,7 @@ class SpurGear:
         self.tsider_y = (np.sin(-phi) * r)[::-1]
 
 
-        # Calculate tooth root points - an arc starting at the right side of
+        # Calculate tooth root points - an arc that starts at the right side of
         # the tooth and goes to the left side of the next tooth. The mid-point
         # of that arc lies on the dedendum circle.
         rho = tau - phi[0] * 2.0
