@@ -36,8 +36,8 @@ class BevelGear:
 
         # Polar angles of base, face and root cones 
         self.gamma_b = gamma_b = np.arcsin(np.cos(a0) * np.sin(gamma_p))
-        self.gamma_f = gamma_f = gamma_p + np.arctan(ka * m / gs_r)
-        self.gamma_r = gamma_r = gamma_p - np.arctan(kd * m / gs_r)
+        self.gamma_f = gamma_f = gamma_p + np.arctan(self.ka * m / gs_r)
+        self.gamma_r = gamma_r = gamma_p - np.arctan(self.kd * m / gs_r)
                 
         # Pitch angle
         self.tau = tau = np.pi * 2.0 / z
@@ -78,20 +78,44 @@ class BevelGear:
             p1p3 = angle_between(rcc, p1, p3)
             a_start = (np.pi - p1p3 * 2.0) / 2.0
             a_end = -a_start + np.pi
-            self.tooth_root = np.dstack(s_arc(gs_r, gamma_r + rcc_gamma,
-                                              (tau + mp_theta) / 2.0,
-                                              rcc_gamma,
-                                              np.pi / 2.0 + a_start,
-                                              np.pi / 2.0 + a_end,
-                                              curve_points)).squeeze()
+            self.troot = np.dstack(s_arc(gs_r, gamma_r + rcc_gamma,
+                                         (tau + mp_theta) / 2.0,
+                                         rcc_gamma,
+                                         np.pi / 2.0 + a_start,
+                                         np.pi / 2.0 + a_end,
+                                         curve_points)).squeeze()
         else:
             r_theta = np.linspace(mp_theta - theta[0],
                                   theta[0] + tau, curve_points)
-            self.tooth_root = np.dstack(sphere_to_cartesian(
-                                                        gs_r,
-                                                        np.full(curve_points,
-                                                                gamma_tr),
-                                                        r_theta)).squeeze()
+            self.troot = np.dstack(sphere_to_cartesian(gs_r,
+                                                       np.full(curve_points,
+                                                               gamma_tr),
+                                                       r_theta)).squeeze()
 
 
     def tooth_points_xyz(self):
+        pts = np.concatenate((self.tsidel, self.ttip,
+                              self.tsider, self.troot))
+        pts_x = pts[:, 0]
+        pts_y = pts[:, 1]
+        pts_z = pts[:, 2]
+        
+        return pts_x, pts_y, pts_z
+
+    
+    def gear_points_xyz(self):
+        tpts = np.concatenate((self.tsidel, self.ttip,
+                               self.tsider, self.troot))
+        pts = tpts.copy()
+        angle = self.tau
+        for i in range(self.z - 1):
+            pts = np.concatenate((pts,
+                                  tpts @ rotation_matrix((0.0, 0.0, 1.0),
+                                                         angle)))
+            angle += self.tau
+
+        pts_x = pts[:, 0]
+        pts_y = pts[:, 1]
+        pts_z = pts[:, 2]
+        
+        return pts_x, pts_y, pts_z
