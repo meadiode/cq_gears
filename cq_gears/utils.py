@@ -125,12 +125,12 @@ def project_to_xy_from_sphere_center(pts, sphere_r):
     return proj_pts
 
 
-def intersection_ray_xy(points_a, points_b):
+def intersection_ray_xy(points_a, points_b, offset_z):
     ''' Get intersection point between a ray defined by points a and b
-        and the plane XY0
+        and a plane XY with Z-offset equal to offset_z
     '''
     ab = points_b - points_a
-    t = points_a[:, 2] / -ab[:, 2]
+    t = (points_a[:, 2] - offset_z) / -ab[:, 2]
     res = points_a + ab * np.expand_dims(t, 1)
     return res
 
