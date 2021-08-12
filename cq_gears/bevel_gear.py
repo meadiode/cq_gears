@@ -144,8 +144,10 @@ class BevelGear:
             bt_splines.append(intersection_ray_xy(pts_a, pts_b, ht_b))
 
 
+        rb = self.cone_h / np.cos(self.gamma_f)
+
         spline_tf = np.linspace((1.0,),
-                                ((self.gs_r - self.face_width) / self.gs_r,),
+                                ((self.gs_r - self.face_width) / rb,),
                                 self.surface_splines)
 
         t_faces = []
@@ -196,16 +198,16 @@ class BevelGear:
         return bt_splines
 
 
-    def _build_horizontal_face(self):
+    def _build_horizontal_face(self, tol=1e-3):
         splines = self._get_projected_tooth_splines()
 
         edges = []
         for s in splines:
-            pts = [cq.Vector(*p) for p in s]    
+            pts = [cq.Vector(*p) for p in s]
             edge = cq.Edge.makeSplineApprox(pts, smoothing=(1.0, 1.0, 1.0))
             edges.append(edge)
 
-        wr = cq.Wire.combine(edges, tol=1e-3)
+        wr = cq.Wire.combine(edges, tol=tol)
         assert len(wr) == 1, 'Failed to combine tooth profile splines together' 
 
         wires = []
@@ -214,7 +216,7 @@ class BevelGear:
                                       (0.0, 0.0, 1.0),
                                       np.degrees(self.tau) * i))
 
-        wr = cq.Wire.combine(wires, tol=1e-3)
+        wr = cq.Wire.combine(wires, tol=tol)
         assert len(wr) == 1, 'Failed to combine gear profile splines together' 
         face = cq.Face.makeFromWires(wr[0])
 
@@ -227,9 +229,11 @@ class BevelGear:
         ht_b = np.cos(self.gamma_r) * self.gs_r
 
         bottom = self._build_horizontal_face()
-        top = bottom.scale((self.gs_r - self.face_width) / self.gs_r)
 
-        ht_t = (self.gs_r - self.face_width) * np.cos(self.gamma_r)
+        rb = self.cone_h / np.cos(self.gamma_f)
+        top = bottom.scale((self.gs_r - self.face_width) / rb)
+
+        ht_t = (self.gs_r - self.face_width) * np.cos(self.gamma_f)
 
         
         bottom = bottom.translate((0.0, 0.0, ht_b))
@@ -242,8 +246,8 @@ class BevelGear:
 
 
     def _trim_bottom(self, body):
-        extra = 0.01
-        r = self.gs_r - 0.01
+        extra = 0.1
+        r = self.gs_r - 0.1
         
         p1 = sphere_to_cartesian(r, self.gamma_r, np.pi / 2.0)
         p2 = sphere_to_cartesian(r, self.gamma_p, np.pi / 2.0)
@@ -269,6 +273,24 @@ class BevelGear:
     def _trim_top(self, body):
         r = self.gs_r - self.face_width
 
+        p1 = sphere_to_cartesian(r, self.gamma_r, np.pi / 2.0)
+        p2 = sphere_to_cartesian(r, self.gamma_p, np.pi / 2.0)
+        p3 = sphere_to_cartesian(r, self.gamma_f, np.pi / 2.0)
+
+        trimmer = (cq.Workplane('XZ')
+                   .moveTo(p1[0], p1[2])
+                   .threePointArc((p2[0], p2[2]), (p3[0], p3[2]))
+                   .lineTo(0.0, p3[2])
+                   .lineTo(0.0, p1[2])
+                   .close()
+                   .revolve(combine=False)
+                   )
+
+        body = cq.Workplane('XY').add(body).cut(trimmer)
+
+        return body
+
+
 
     def build(self, bore_d=None, trim_bottom=True, trim_top=True):
         faces = self._build_faces()
@@ -278,6 +300,9 @@ class BevelGear:
 
         if trim_bottom:
             body = self._trim_bottom(body)
+
+        if trim_top:
+            body = self._trim_top(body)
 
         body = (body
                 .rotate((0.0, 0.0, 0.0), (1.0, 0.0, 0.0), 180.0)
