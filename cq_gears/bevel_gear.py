@@ -48,11 +48,16 @@ class BevelGear:
 
         if helix_angle != 0.0:
             self.surface_splines = surface_splines
-            self.twist_angle = width / \
-                                (r0 * np.tan(np.pi / 2.0 - self.helix_angle))
+
+            # Calculate twist(torsion) angle
+            beta = np.arctan(face_width * np.tan(self.helix_angle) / \
+                             (2.0 * gs_r - face_width))
+            self.twist_angle = np.arcsin(gs_r / rp * np.sin(beta)) * 2.0
         else:
             self.surface_splines = 2
             self.twist_angle = 0.0
+
+        print('>>>', np.degrees(self.twist_angle))
 
         # The distance between sphere's center and the bottom of the gear
         self.cone_h = np.cos(gamma_r) * gs_r
@@ -128,8 +133,7 @@ class BevelGear:
         return pts
 
 
-    def _build_profile(self):
-
+    def _get_projected_tooth_splines(self, z=None):
         # Get projected tooth profile points at the bottom
         bt_splines = []
         for spline in (self.tsidel, self.ttip, self.tsider, self.troot):
@@ -141,13 +145,37 @@ class BevelGear:
             pts_a = spline * self.gs_r
             pts_b = spline * extra_gs_r
 
-            bt_splines.append(intersection_ray_xy(pts_a, pts_b, ht_b))
+            if self.twist_angle != 0.0:
+                angle = ((extra_gs_r - self.gs_r) / self.face_width) * \
+                        self.twist_angle
+                r_mat = rotation_matrix((0.0, 0.0, 1.0), -angle * 0.5)
+                pts_b = pts_b @ r_mat
+
+            pts = intersection_ray_xy(pts_a, pts_b, ht_b)
+            
+            if z is not None:
+                pts[:, 2] = z
+
+            bt_splines.append(pts)    
+
+        return bt_splines
 
 
+    def _build_profile(self):
+        bt_splines = self._get_projected_tooth_splines()
+
+        # Cone's radius at the bottom
         rb = self.cone_h / np.cos(self.gamma_f)
 
-        spline_tf = np.linspace((1.0,),
-                                ((self.gs_r - self.face_width) / rb,),
+        ht_b = np.cos(self.gamma_r) * self.gs_r
+        extra_gs_r = ht_b / np.cos(self.gamma_f)
+        angle = ((extra_gs_r - self.gs_r) / self.face_width) * \
+                self.twist_angle
+
+        # Transformation parameters: (scale coefficient, twist angle)
+        spline_tf = np.linspace((1.0, 0.0),
+                                ((self.gs_r - self.face_width) / rb,
+                                  self.twist_angle + angle),
                                 self.surface_splines)
 
         t_faces = []
@@ -157,9 +185,9 @@ class BevelGear:
             face_pts = []
 
             # Make tooth profile points
-            for r, in spline_tf:
-                pts = spline.copy()
-                face_pts.append(pts * r)
+            for s, a in spline_tf:
+                r_mat = rotation_matrix((0.0, 0.0, 1.0), a)
+                face_pts.append((spline @ r_mat) * s)
 
             face_pts = np.stack(face_pts).squeeze()
 
@@ -178,28 +206,8 @@ class BevelGear:
         return faces
 
 
-    def _get_projected_tooth_splines(self):
-        # Get projected tooth profile points at the bottom
-        bt_splines = []
-        for spline in (self.tsidel, self.ttip, self.tsider, self.troot):
-            
-            # Distance between apex of the cone and the bottom of the gear
-            ht_b = np.cos(self.gamma_r) * self.gs_r            
-            extra_gs_r = ht_b / np.cos(self.gamma_f)
-
-            pts_a = spline * self.gs_r
-            pts_b = spline * extra_gs_r
-
-            pts = intersection_ray_xy(pts_a, pts_b, ht_b)
-            pts[:, 2] = 0.0
-
-            bt_splines.append(pts)    
-
-        return bt_splines
-
-
-    def _build_horizontal_face(self, tol=1e-3):
-        splines = self._get_projected_tooth_splines()
+    def _build_horizontal_face(self, tol=1e-2):
+        splines = self._get_projected_tooth_splines(z=0.0)
 
         edges = []
         for s in splines:
@@ -234,10 +242,21 @@ class BevelGear:
         top = bottom.scale((self.gs_r - self.face_width) / rb)
 
         ht_t = (self.gs_r - self.face_width) * np.cos(self.gamma_f)
+      
+        extra_gs_r = ht_b / np.cos(self.gamma_f)
+        angle = ((extra_gs_r - self.gs_r) / self.face_width) * \
+                self.twist_angle
 
-        
+
         bottom = bottom.translate((0.0, 0.0, ht_b))
+        # bottom = bottom.rotate((0.0, 0.0, 0.0),
+        #                        (0.0, 0.0, 1.0),
+        #                        -np.degrees(angle))
+        
         top = top.translate((0.0, 0.0, ht_t))
+        top = top.rotate((0.0, 0.0, 0.0),
+                         (0.0, 0.0, 1.0),
+                         np.degrees(self.twist_angle - angle))
 
         faces.append(bottom)
         faces.append(top)
@@ -275,7 +294,7 @@ class BevelGear:
 
         p1 = sphere_to_cartesian(r, self.gamma_r, np.pi / 2.0)
         p2 = sphere_to_cartesian(r, self.gamma_p, np.pi / 2.0)
-        p3 = sphere_to_cartesian(r, self.gamma_f, np.pi / 2.0)
+        p3 = sphere_to_cartesian(r, self.gamma_f * 1.1, np.pi / 2.0)
 
         trimmer = (cq.Workplane('XZ')
                    .moveTo(p1[0], p1[2])
