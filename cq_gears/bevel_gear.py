@@ -12,6 +12,7 @@ class BevelGear:
 
     ka = 1.0  # addendum coefficient
     kd = 1.25 # dedendum coefficient
+    wire_comb_tol = 0.01 # wire combining tolerance
 
     def __init__(self, module, teeth_number, cone_angle, face_width,
                  pressure_angle=20.0, helix_angle=0.0, clearance=0.0,
@@ -56,8 +57,6 @@ class BevelGear:
         else:
             self.surface_splines = 2
             self.twist_angle = 0.0
-
-        print('>>>', np.degrees(self.twist_angle))
 
         # The distance between sphere's center and the bottom of the gear
         self.cone_h = np.cos(gamma_r) * gs_r
@@ -133,135 +132,88 @@ class BevelGear:
         return pts
 
 
-    def _get_projected_tooth_splines(self, z=None):
-        # Get projected tooth profile points at the bottom
-        bt_splines = []
-        for spline in (self.tsidel, self.ttip, self.tsider, self.troot):
-            
-            # Distance between apex of the cone and the bottom of the gear
-            ht_b = np.cos(self.gamma_r) * self.gs_r            
-            extra_gs_r = ht_b / np.cos(self.gamma_f)
+    def _build_tooth_profile(self):
+        pc_h = np.cos(self.gamma_r) * self.gs_r # pitch cone height
+        pc_f = pc_h / np.cos(self.gamma_f) # extended pitch cone flank length
+        pc_rb = pc_f * np.sin(self.gamma_f) # pitch cone base radius
 
-            pts_a = spline * self.gs_r
-            pts_b = spline * extra_gs_r
+            # top cone height
+        tc_h = np.cos(self.gamma_f) * (self.gs_r - self.face_width)
+        tc_f = tc_h / np.cos(self.gamma_r) # top cone flank length
+        tc_rb = tc_f * np.sin(self.gamma_f) # top cone base radius
 
-            if self.twist_angle != 0.0:
-                angle = ((extra_gs_r - self.gs_r) / self.face_width) * \
-                        self.twist_angle
-                r_mat = rotation_matrix((0.0, 0.0, 1.0), -angle * 0.5)
-                pts_b = pts_b @ r_mat
+        # start/stop twist angle
+        ta1 = -(pc_f - self.gs_r) / self.face_width * self.twist_angle
+        ta2 = (self.gs_r - tc_f) / self.face_width * self.twist_angle
 
-            pts = intersection_ray_xy(pts_a, pts_b, ht_b)
-            
-            if z is not None:
-                pts[:, 2] = z
+        # Transformation parameters: (radius, twist angle)
+        spline_tf = np.linspace((tc_f - 0.1, ta1), (pc_f, ta2))
 
-            bt_splines.append(pts)    
+        tcp_size = tc_rb * 1000.0
+        top_cut_plane = cq.Face.makePlane(length=tcp_size, width=tcp_size,
+                                          basePnt=(0.0, 0.0, tc_h),
+                                          dir=(0.0, 0.0, 1.0))
+        bcp_size = pc_rb * 1000.0
+        bott_cut_plane = cq.Face.makePlane(length=bcp_size, width=bcp_size,
+                                           basePnt=(0.0, 0.0, pc_h),
+                                           dir=(0.0, 0.0, 1.0))
 
-        return bt_splines
-
-
-    def _build_profile(self):
-        bt_splines = self._get_projected_tooth_splines()
-
-        # Cone's radius at the bottom
-        rb = self.cone_h / np.cos(self.gamma_f)
-
-        ht_b = np.cos(self.gamma_r) * self.gs_r
-        extra_gs_r = ht_b / np.cos(self.gamma_f)
-        angle = ((extra_gs_r - self.gs_r) / self.face_width) * \
-                self.twist_angle
-
-        # Transformation parameters: (scale coefficient, twist angle)
-        spline_tf = np.linspace((1.0, 0.0),
-                                ((self.gs_r - self.face_width) / rb,
-                                  self.twist_angle + angle),
-                                self.surface_splines)
+        def get_zmax(face):
+            bb = face.BoundingBox()
+            return bb.zmax
 
         t_faces = []
-
-        for spline in bt_splines:
-
+        for spline in (self.tsidel, self.ttip, self.tsider, self.troot):
             face_pts = []
 
-            # Make tooth profile points
-            for s, a in spline_tf:
+            for r, a in spline_tf:
                 r_mat = rotation_matrix((0.0, 0.0, 1.0), a)
-                face_pts.append((spline @ r_mat) * s)
-
-            face_pts = np.stack(face_pts).squeeze()
+                face_pts.append((spline @ r_mat) * r)
 
             # Make faces out of the points
-            face = make_spline_approx(face_pts, maxDeg=15)
+            face = make_spline_approx(face_pts)
+
+            # Trim top
+            cpd = face.split(top_cut_plane)
+            if isinstance(cpd, cq.Compound):
+                face = max(list(cpd), key=get_zmax)
+            else:
+                face = cpd
+
+            # Trim bottom
+            cpd = face.split(bott_cut_plane)
+            if isinstance(cpd, cq.Compound):
+                face = min(list(cpd), key=get_zmax)
+            else:
+                face = cpd
+
             t_faces.append(face)
 
-
-        faces = []
-        for i in range(self.z):
-            for tf in t_faces:
-                faces.append(tf.rotate((0.0, 0.0, 0.0),
-                                       (0.0, 0.0, 1.0),
-                                       np.degrees(self.tau * i)))
-
-        return faces
-
-
-    def _build_horizontal_face(self, tol=1e-2):
-        splines = self._get_projected_tooth_splines(z=0.0)
-
-        edges = []
-        for s in splines:
-            pts = [cq.Vector(*p) for p in s]
-            edge = cq.Edge.makeSplineApprox(pts, smoothing=(1.0, 1.0, 1.0))
-            edges.append(edge)
-
-        wr = cq.Wire.combine(edges, tol=tol)
-        assert len(wr) == 1, 'Failed to combine tooth profile splines together' 
-
-        wires = []
-        for i in range(self.z):
-            wires.append(wr[0].rotate((0.0, 0.0, 0.0),
-                                      (0.0, 0.0, 1.0),
-                                      np.degrees(self.tau) * i))
-
-        wr = cq.Wire.combine(wires, tol=tol)
-        assert len(wr) == 1, 'Failed to combine gear profile splines together' 
-        face = cq.Face.makeFromWires(wr[0])
-
-        return face
+        return t_faces
 
 
     def _build_faces(self):
-        faces = self._build_profile()
 
-        ht_b = np.cos(self.gamma_r) * self.gs_r
+        faces_wp = cq.Workplane('XY')
 
-        bottom = self._build_horizontal_face()
+        t_faces = self._build_tooth_profile()
 
-        rb = self.cone_h / np.cos(self.gamma_f)
-        top = bottom.scale((self.gs_r - self.face_width) / rb)
+        for i in range(self.z):
+            for tf in t_faces:
+                faces_wp = faces_wp.add(tf.rotate((0.0, 0.0, 0.0),
+                                                  (0.0, 0.0, 1.0),
+                                                  np.degrees(self.tau * i)))
 
-        ht_t = (self.gs_r - self.face_width) * np.cos(self.gamma_f)
-      
-        extra_gs_r = ht_b / np.cos(self.gamma_f)
-        angle = ((extra_gs_r - self.gs_r) / self.face_width) * \
-                self.twist_angle
+        topface_wires = cq.Wire.combine(faces_wp.edges('<Z').vals(),
+                                        tol=self.wire_comb_tol)
+        topface = cq.Face.makeFromWires(topface_wires[0])
+        botface_wires = cq.Wire.combine(faces_wp.edges('>Z').vals(),
+                                        tol=self.wire_comb_tol)
+        botface = cq.Face.makeFromWires(botface_wires[0])
 
+        faces_wp = faces_wp.add(topface).add(botface)
 
-        bottom = bottom.translate((0.0, 0.0, ht_b))
-        # bottom = bottom.rotate((0.0, 0.0, 0.0),
-        #                        (0.0, 0.0, 1.0),
-        #                        -np.degrees(angle))
-        
-        top = top.translate((0.0, 0.0, ht_t))
-        top = top.rotate((0.0, 0.0, 0.0),
-                         (0.0, 0.0, 1.0),
-                         np.degrees(self.twist_angle - angle))
-
-        faces.append(bottom)
-        faces.append(top)
-
-        return faces
+        return faces_wp.vals()
 
 
     def _trim_bottom(self, body):
@@ -308,7 +260,6 @@ class BevelGear:
         body = cq.Workplane('XY').add(body).cut(trimmer)
 
         return body
-
 
 
     def build(self, bore_d=None, trim_bottom=True, trim_top=True):
