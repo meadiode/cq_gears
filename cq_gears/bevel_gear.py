@@ -147,7 +147,7 @@ class BevelGear:
         ta2 = (self.gs_r - tc_f) / self.face_width * self.twist_angle
 
         # Transformation parameters: (radius, twist angle)
-        spline_tf = np.linspace((tc_f - 0.1, ta1), (pc_f, ta2))
+        spline_tf = np.linspace((tc_f, ta1), (pc_f, ta2))
 
         tcp_size = tc_rb * 1000.0
         top_cut_plane = cq.Face.makePlane(length=tcp_size, width=tcp_size,
@@ -217,22 +217,19 @@ class BevelGear:
 
 
     def _trim_bottom(self, body):
-        extra = 0.1
-        r = self.gs_r - 0.1
+        r = self.gs_r
         
-        p1 = sphere_to_cartesian(r, self.gamma_r, np.pi / 2.0)
+        p1 = sphere_to_cartesian(r, self.gamma_r * 0.99, np.pi / 2.0)
         p2 = sphere_to_cartesian(r, self.gamma_p, np.pi / 2.0)
-        p3 = sphere_to_cartesian(r, self.gamma_f, np.pi / 2.0)
+        p3 = sphere_to_cartesian(r, self.gamma_f * 1.01, np.pi / 2.0)
 
         x1 = np.tan(self.gamma_f) * self.cone_h + 1.0
 
         trimmer = (cq.Workplane('XZ')
-                   .moveTo(p1[0], p1[2] + extra)
-                   .lineTo(p1[0], p1[2])
+                   .moveTo(p1[0], p1[2])
                    .threePointArc((p2[0], p2[2]), (p3[0], p3[2]))
-                   .lineTo(p3[0], p3[2] - extra)
-                   .lineTo(x1, p3[2] - extra)
-                   .lineTo(x1, p1[2] + extra)
+                   .lineTo(x1, p3[2])
+                   .lineTo(x1, p1[2])
                    .close()
                    .revolve(combine=False))
 
@@ -246,7 +243,7 @@ class BevelGear:
 
         p1 = sphere_to_cartesian(r, self.gamma_r, np.pi / 2.0)
         p2 = sphere_to_cartesian(r, self.gamma_p, np.pi / 2.0)
-        p3 = sphere_to_cartesian(r, self.gamma_f * 1.1, np.pi / 2.0)
+        p3 = sphere_to_cartesian(r, self.gamma_f * 1.01, np.pi / 2.0)
 
         trimmer = (cq.Workplane('XZ')
                    .moveTo(p1[0], p1[2])
@@ -254,11 +251,25 @@ class BevelGear:
                    .lineTo(0.0, p3[2])
                    .lineTo(0.0, p1[2])
                    .close()
-                   .revolve(combine=False)
-                   )
+                   .revolve(combine=False))
 
         body = cq.Workplane('XY').add(body).cut(trimmer)
 
+        return body
+
+
+    def _make_bore(self, body, bore_d):
+        if bore_d is None:
+            return body
+
+        body = (cq.Workplane('XY')
+                .add(body)
+                .faces('<Z')
+                .workplane()
+                .circle(bore_d / 2.0)
+                .cutThruAll()
+               ).val()
+        
         return body
 
 
@@ -274,6 +285,10 @@ class BevelGear:
         if trim_top:
             body = self._trim_top(body)
 
+        if bore_d:
+            body = self._make_bore(body, bore_d)
+
+        # Put the gear on its bottom
         body = (body
                 .rotate((0.0, 0.0, 0.0), (1.0, 0.0, 0.0), 180.0)
                 .translate((0.0, 0.0, self.cone_h)))
