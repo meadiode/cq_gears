@@ -7,12 +7,10 @@ from .utils import (circle3d_by3points, rotation_matrix, make_spline_approx,
                     s_inv, s_arc, angle_between, sphere_to_cartesian,
                     make_shell, project_to_xy_from_sphere_center,
                     intersection_ray_xy)
+from .spur_gear import GearBase
 
-class BevelGear:
 
-    ka = 1.0  # addendum coefficient
-    kd = 1.25 # dedendum coefficient
-    wire_comb_tol = 0.01 # wire combining tolerance
+class BevelGear(GearBase):
 
     def __init__(self, module, teeth_number, cone_angle, face_width,
                  pressure_angle=20.0, helix_angle=0.0, clearance=0.0,
@@ -23,7 +21,6 @@ class BevelGear:
         self.a0 = a0 = np.radians(pressure_angle)
         self.clearance = clearance
         self.backlash = backlash
-        self.curve_points = curve_points
         self.helix_angle = np.radians(helix_angle)
         self.face_width = face_width
         
@@ -48,8 +45,6 @@ class BevelGear:
         self.tau = tau = np.pi * 2.0 / z
 
         if helix_angle != 0.0:
-            self.surface_splines = surface_splines
-
             # Calculate twist(torsion) angle
             beta = np.arctan(face_width * np.tan(self.helix_angle) / \
                              (2.0 * gs_r - face_width))
@@ -69,25 +64,26 @@ class BevelGear:
         gamma_tr = max(gamma_b, gamma_r)
         gamma = np.linspace(gamma_tr, gamma_f, curve_points)
         theta = s_inv(gamma_b, gamma)
-        self.tsidel = np.dstack(sphere_to_cartesian(1.0,
-                                                    gamma,
-                                                    theta)).squeeze()
+        self.t_lflank_pts = np.dstack(sphere_to_cartesian(1.0,
+                                                          gamma,
+                                                          theta)).squeeze()
         # Tooth tip curve points
         theta_tip = np.linspace(theta[-1], mp_theta - theta[-1], curve_points)
-        self.ttip = np.dstack(sphere_to_cartesian(1.0,
-                                                  np.full(curve_points,
-                                                          gamma_f),
-                                                  theta_tip)).squeeze()
+        self.t_tip_pts = np.dstack(
+                            sphere_to_cartesian(1.0,
+                                                np.full(curve_points,
+                                                        gamma_f),
+                                                theta_tip)).squeeze()
 
         # Get the right flank curve points
-        self.tsider = np.dstack(sphere_to_cartesian(1.0,
-                                                    gamma[::-1],
-                                                    mp_theta - \
-                                                        theta[::-1])).squeeze()
+        self.t_rflank_pts = np.dstack(
+                        sphere_to_cartesian(1.0,
+                                            gamma[::-1],
+                                            mp_theta - theta[::-1])).squeeze()
  
         # Tooth root curve points
         if gamma_r < gamma_b:
-            p1 = self.tsider[-1]
+            p1 = self.t_rflank_pts[-1]
             p2 = np.array(sphere_to_cartesian(1.0, gamma_b, theta[0] + tau))
             p3 = np.array(sphere_to_cartesian(1.0, gamma_r,
                                               (tau + mp_theta) / 2.0))
@@ -97,30 +93,31 @@ class BevelGear:
             p1p3 = angle_between(rcc, p1, p3)
             a_start = (np.pi - p1p3 * 2.0) / 2.0
             a_end = -a_start + np.pi
-            self.troot = np.dstack(s_arc(1.0, gamma_r + rcc_gamma,
-                                         (tau + mp_theta) / 2.0,
-                                         rcc_gamma,
-                                         np.pi / 2.0 + a_start,
-                                         np.pi / 2.0 + a_end,
-                                         curve_points)).squeeze()
+            self.t_root_pts = np.dstack(s_arc(1.0, gamma_r + rcc_gamma,
+                                              (tau + mp_theta) / 2.0,
+                                              rcc_gamma,
+                                              np.pi / 2.0 + a_start,
+                                              np.pi / 2.0 + a_end,
+                                              curve_points)).squeeze()
         else:
             r_theta = np.linspace(mp_theta - theta[0],
                                   theta[0] + tau, curve_points)
-            self.troot = np.dstack(sphere_to_cartesian(1.0,
-                                                       np.full(curve_points,
-                                                               gamma_tr),
-                                                       r_theta)).squeeze()
+            self.t_root_pts = np.dstack(
+                                    sphere_to_cartesian(1.0,
+                                                        np.full(curve_points,
+                                                                gamma_tr),
+                                                        r_theta)).squeeze()
 
 
-    def tooth_points_xyz(self):
-        pts = np.concatenate((self.tsidel, self.ttip,
-                              self.tsider, self.troot))
+    def tooth_points(self):
+        pts = np.concatenate((self.t_lflank_pts, self.t_tip_pts,
+                              self.t_rflank_pts, self.t_root_pts))
         return pts
 
     
-    def gear_points_xyz(self):
-        tpts = np.concatenate((self.tsidel, self.ttip,
-                               self.tsider, self.troot))
+    def gear_points(self):
+        tpts = np.concatenate((self.t_lflank_pts, self.t_tip_pts,
+                               self.t_rflank_pts, self.t_root_pts))
         pts = tpts.copy()
         angle = self.tau
         for i in range(self.z - 1):
@@ -132,7 +129,7 @@ class BevelGear:
         return pts
 
 
-    def _build_tooth_profile(self):
+    def _build_tooth_faces(self):
         pc_h = np.cos(self.gamma_r) * self.gs_r # pitch cone height
         pc_f = pc_h / np.cos(self.gamma_f) # extended pitch cone flank length
         pc_rb = pc_f * np.sin(self.gamma_f) # pitch cone base radius
@@ -163,7 +160,8 @@ class BevelGear:
             return bb.zmax
 
         t_faces = []
-        for spline in (self.tsidel, self.ttip, self.tsider, self.troot):
+        for spline in (self.t_lflank_pts, self.t_tip_pts,
+                       self.t_rflank_pts, self.t_root_pts):
             face_pts = []
 
             for r, a in spline_tf:
@@ -192,31 +190,31 @@ class BevelGear:
         return t_faces
 
 
-    def _build_faces(self):
-
-        faces_wp = cq.Workplane('XY')
-
-        t_faces = self._build_tooth_profile()
-
+    def _build_gear_faces(self):
+        t_faces = self._build_tooth_faces()
+        
+        faces = []
         for i in range(self.z):
             for tf in t_faces:
-                faces_wp = faces_wp.add(tf.rotate((0.0, 0.0, 0.0),
-                                                  (0.0, 0.0, 1.0),
-                                                  np.degrees(self.tau * i)))
-
-        topface_wires = cq.Wire.combine(faces_wp.edges('<Z').vals(),
+                faces.append(tf.rotate((0.0, 0.0, 0.0),
+                                       (0.0, 0.0, 1.0),
+                                       np.degrees(self.tau * i)))
+        wp = cq.Workplane('XY').add(faces)
+        
+        topface_wires = cq.Wire.combine(wp.edges('<Z').vals(),
                                         tol=self.wire_comb_tol)
         topface = cq.Face.makeFromWires(topface_wires[0])
-        botface_wires = cq.Wire.combine(faces_wp.edges('>Z').vals(),
+        botface_wires = cq.Wire.combine(wp.edges('>Z').vals(),
                                         tol=self.wire_comb_tol)
         botface = cq.Face.makeFromWires(botface_wires[0])
+        wp = wp.add(topface).add(botface)
 
-        faces_wp = faces_wp.add(topface).add(botface)
-
-        return faces_wp.vals()
+        return wp.vals()
 
 
-    def _trim_bottom(self, body):
+    def _trim_bottom(self, body, do_trim=False):
+        if not do_trim:
+            return body
         r = self.gs_r
         
         p1 = sphere_to_cartesian(r, self.gamma_r * 0.99, np.pi / 2.0)
@@ -238,7 +236,9 @@ class BevelGear:
         return body
 
 
-    def _trim_top(self, body):
+    def _trim_top(self, body, do_trim=False):
+        if not do_trim:
+            return body
         r = self.gs_r - self.face_width
 
         p1 = sphere_to_cartesian(r, self.gamma_r, np.pi / 2.0)
@@ -274,16 +274,13 @@ class BevelGear:
 
 
     def build(self, bore_d=None, trim_bottom=True, trim_top=True):
-        faces = self._build_faces()
+        faces = self._build_gear_faces()
 
         shell = make_shell(faces)
         body = cq.Solid.makeSolid(shell)
 
-        if trim_bottom:
-            body = self._trim_bottom(body)
-
-        if trim_top:
-            body = self._trim_top(body)
+        body = self._trim_bottom(body, trim_bottom)
+        body = self._trim_top(body, trim_top)
         body = self._make_bore(body, bore_d)
 
         # Put the gear on its bottom
