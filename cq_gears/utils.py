@@ -196,8 +196,12 @@ def make_spline_approx_1d(points, tol=1e-3, smoothing=None, minDeg=1, maxDeg=6):
     return cq.Edge(BRepBuilderAPI_MakeEdge(spline_geom).Edge())
 
 
-def make_shell(faces):
-    shell_builder = BRepBuilderAPI_Sewing(tolerance=1e-2)
+def make_shell(faces, tol=1e-2):
+    '''
+    This is similar to cq.Shell.makeShell, but allows to pass the tolerance
+    parameter.
+    '''
+    shell_builder = BRepBuilderAPI_Sewing(tol)
 
     for face in faces:
         shell_builder.Add(face.wrapped)

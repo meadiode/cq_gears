@@ -7,23 +7,32 @@ from .utils import (circle3d_by3points, rotation_matrix, make_spline_approx,
                     make_shell)
 
 
-class SpurGear:
+class GearBase:
+    ka = 1.0  # Addendum coefficient
+    kd = 1.25 # Dedendum coefficient
 
-    ka = 1.0  # addendum coefficient
-    kd = 1.25 # dedendum coefficient
+    curve_points = 20 # Number of points to approximate a curve
+    surface_splines = 5 # Number of curve splines to approximate a surface
+    
+    wire_comb_tol = 1e-2 # Wire combining tolerance
+    spline_approx_tol = 1e-2 # Surface spline approximation tolerance
+    shell_sewing_tol = 1e-2 # Tolerance to assembly a shell out of faces
+    spline_approx_min_deg = 1 # Minimum surface spline degree
+    spline_approx_max_deg = 6 # Maximum surface spline degree
+
+
+class SpurGear(GearBase):
 
     def __init__(self, module, teeth_number, width,
                  pressure_angle=20.0, helix_angle=0.0, clearance=0.0,
-                 backlash=0.0, curve_points=20, surface_splines=5):
+                 backlash=0.0):
         self.m = m = module
         self.z = z = teeth_number
         self.a0 = a0 = np.radians(pressure_angle)
         self.clearance = clearance
         self.backlash = backlash
-        self.curve_points = curve_points
         self.helix_angle = np.radians(helix_angle)
         self.width = width
-
 
         d0 = m * z         # pitch diameter
         adn = self.ka / (z / d0) # addendum
@@ -42,7 +51,6 @@ class SpurGear:
         self.tau = tau = np.pi * 2.0 / z # pitch angle
 
         if helix_angle != 0.0:
-            self.surface_splines = surface_splines
             self.twist_angle = width / \
                                 (r0 * np.tan(np.pi / 2.0 - self.helix_angle))
         else:
@@ -50,33 +58,35 @@ class SpurGear:
             self.twist_angle = 0.0
 
         # Calculate involute curve points for the left side of the tooth
-        r = np.linspace(rr, ra, curve_points)
+        r = np.linspace(rr, ra, self.curve_points)
         cos_a = r0 / r * np.cos(a0)
         a = np.arccos(np.clip(cos_a, -1.0, 1.0))
         inv_a = np.tan(a) - a
         s = r * (s0 / d0 + inv_a0 - inv_a)
         phi = s / r
-        self.tsidel_x = np.cos(phi) * r
-        self.tsidel_y = np.sin(phi) * r
-
+        self.t_lflank_pts = np.dstack((np.cos(phi) * r,
+                                       np.sin(phi) * r,
+                                       np.zeros(self.curve_points))).squeeze()
 
         # Calculate tooth tip points - an arc lying on the addendum circle
-        b = np.linspace(phi[-1], -phi[-1], curve_points)
-        self.ttip_x = np.cos(b) * ra
-        self.ttip_y = np.sin(b) * ra
-
+        b = np.linspace(phi[-1], -phi[-1], self.curve_points)
+        self.t_tip_pts = np.dstack((np.cos(b) * ra,
+                                    np.sin(b) * ra,
+                                    np.zeros(self.curve_points))).squeeze()
 
         # Get right side involute curve points by mirroring the left side
-        self.tsider_x = (np.cos(-phi) * r)[::-1]
-        self.tsider_y = (np.sin(-phi) * r)[::-1]
-
+        self.t_rflank_pts = np.dstack(((np.cos(-phi) * r)[::-1],
+                                       (np.sin(-phi) * r)[::-1],
+                                       np.zeros(self.curve_points))).squeeze()
 
         # Calculate tooth root points - an arc that starts at the right side of
         # the tooth and goes to the left side of the next tooth. The mid-point
         # of that arc lies on the dedendum circle.
         rho = tau - phi[0] * 2.0
         # Get the three points defining the arc
-        p1 = np.array((self.tsider_x[-1], self.tsider_y[-1], 0.0))
+        p1 = np.array((self.t_rflank_pts[-1][0],
+                       self.t_rflank_pts[-1][1],
+                       0.0))
         p2 = np.array((np.cos(-phi[0] - rho / 2.0) * rd,
               np.sin(-phi[0] - rho / 2.0) * rd, 0.0))
         p3 = np.array((np.cos(-phi[0] - rho) * rr,
@@ -92,81 +102,43 @@ class SpurGear:
         if t2 < 0.0:
             t2 += np.pi * 2.0
         t1, t2 = min(t1, t2), max(t1, t2)
-        t = np.linspace(t1 + np.pi * 2.0, t2 + np.pi * 2.0, curve_points)
-        
-        self.troot_x = bcxy[0] + bcr * np.cos(t)
-        self.troot_y = bcxy[1] + bcr * np.sin(t)
-    
+        t = np.linspace(t1 + np.pi * 2.0, t2 + np.pi * 2.0, self.curve_points)
 
-    def tooth_points_xy(self):
-        pts_x = np.concatenate((self.tsidel_x, self.ttip_x,
-                                self.tsider_x, self.troot_x))
-        pts_y = np.concatenate((self.tsidel_y, self.ttip_y,
-                                self.tsider_y, self.troot_y))
-        return pts_x, pts_y
+        self.t_root_pts = np.dstack((bcxy[0] + bcr * np.cos(t),
+                                     bcxy[1] + bcr * np.sin(t),
+                                     np.zeros(self.curve_points))).squeeze()
 
 
-    def gear_points_xy(self):
-        tx, ty = self.tooth_points_xy()
-        pts_x, pts_y = tx.copy(), ty.copy()
+    def tooth_points(self):
+        pts = np.concatenate((self.t_lflank_pts, self.t_tip_pts,
+                              self.t_rflank_pts, self.t_root_pts))
+        return pts
 
-        angle = -self.tau
+
+    def gear_points(self):
+        tpts = np.concatenate((self.t_lflank_pts, self.t_tip_pts,
+                               self.t_rflank_pts, self.t_root_pts))
+        pts = tpts.copy()
+        angle = self.tau
         for i in range(self.z - 1):
-            pts_x = np.concatenate((pts_x,
-                                    tx * np.cos(angle) - ty * np.sin(angle)))
-            pts_y = np.concatenate((pts_y,
-                                    tx * np.sin(angle) + ty * np.cos(angle)))
-            # Going clock-wise
-            angle -= self.tau
+            pts = np.concatenate((pts,
+                                  tpts @ rotation_matrix((0.0, 0.0, 1.0),
+                                                         angle)))
+            angle += self.tau
 
-        return pts_x, pts_y
+        return pts
 
-
-    def _build_horizontal_face(self):
-        tooth_splines = []
-
-        for x, y in zip((self.tsidel_x, self.ttip_x,
-                         self.tsider_x, self.troot_x),
-                        (self.tsidel_y, self.ttip_y,
-                         self.tsider_y, self.troot_y)):
-            pts = []
-
-            for pt in np.dstack((x, y)).squeeze():
-                pts.append(cq.Vector(tuple(pt)))
-
-            tooth_splines.append(cq.Edge.makeSpline(pts))
-
-        tooth_wire = cq.Wire.assembleEdges(tooth_splines)
-
-        wires = []
-        for i in range(self.z): 
-            wires.append(tooth_wire.rotate((0.0, 0.0, 0.0),
-                                           (0.0, 0.0, 1.0),
-                                           np.degrees(self.tau) * i))
-
-        wr = cq.Wire.combine(wires)
-        face = cq.Face.makeFromWires(wr[0])
-
-        return face
-
-
-    def _build_profile(self, twist_angle_a, twist_angle_b, z_pos, width):
-        splines = []
-
-        for x, y in zip((self.tsidel_x, self.ttip_x,
-                         self.tsider_x, self.troot_x),
-                        (self.tsidel_y, self.ttip_y,
-                         self.tsider_y, self.troot_y)):
-            pts = np.dstack((x, y, np.full(x.shape[0], 0.0))).squeeze()
-            splines.append(pts)
-
+    
+    def _build_tooth_faces(self, twist_angle_a, twist_angle_b, z_pos, width):
+        
         # Spline transformation parameters: (angle around z-axis, z-pos)
         spline_tf = np.linspace((twist_angle_a, z_pos),
                                 (twist_angle_b, z_pos + width),
                                 self.surface_splines)
         t_faces = []
 
-        for spline in splines:
+        for spline in (self.t_lflank_pts, self.t_tip_pts,
+                       self.t_rflank_pts, self.t_root_pts):
             face_pts = []
 
             for a, z in spline_tf:
@@ -176,35 +148,37 @@ class SpurGear:
                 pts[:, 2] = z
                 pts = pts @ r_mat
 
-                face_pts.append(pts)
+                face_pts.append([cq.Vector(*pt) for pt in pts])
 
-            face_pts = np.stack(face_pts)
-            face = make_spline_approx(face_pts, maxDeg=15)
+            face = cq.Face.makeSplineApprox(face_pts,
+                                            tol=self.spline_approx_tol,
+                                            minDeg=self.spline_approx_min_deg,
+                                            maxDeg=self.spline_approx_max_deg)
             t_faces.append(face)
 
+        return t_faces
 
+
+    def _build_gear_faces(self):
+        t_faces = self._build_tooth_faces(0.0, self.twist_angle,
+                                          0.0, self.width)
         faces = []
         for i in range(self.z):
             for tf in t_faces:
                 faces.append(tf.rotate((0.0, 0.0, 0.0),
                                        (0.0, 0.0, 1.0),
                                        np.degrees(self.tau * i)))
+        wp = cq.Workplane('XY').add(faces)
+        
+        topface_wires = cq.Wire.combine(wp.edges('<Z').vals(),
+                                        tol=self.wire_comb_tol)
+        topface = cq.Face.makeFromWires(topface_wires[0])
+        botface_wires = cq.Wire.combine(wp.edges('>Z').vals(),
+                                        tol=self.wire_comb_tol)
+        botface = cq.Face.makeFromWires(botface_wires[0])
+        wp = wp.add(topface).add(botface)
 
-        return faces
-
-
-    def _build_faces(self):
-        faces = self._build_profile(0.0, self.twist_angle, 0.0, self.width)
-
-        bottom = self._build_horizontal_face()
-        top = bottom.rotate((0.0, 0.0, 0.0),
-                            (0.0, 0.0, 1.0),
-                            -np.degrees(self.twist_angle))
-        top = top.translate((0.0, 0.0, self.width))
-        faces.append(bottom)
-        faces.append(top)
-
-        return faces
+        return wp.vals()
 
 
     def _make_bore(self, body, bore_d):
@@ -366,9 +340,9 @@ class SpurGear:
               hub_d=None, hub_length=None, recess_d=None, recess=None,
               n_spokes=None, spoke_width=None, spoke_fillet=None,
               spokes_id=None, spokes_od=None):
-        faces = self._build_faces()
+        faces = self._build_gear_faces()
 
-        shell = make_shell(faces)
+        shell = make_shell(faces, tol=self.shell_sewing_tol)
         body = cq.Solid.makeSolid(shell)
 
         body = self._make_bore(body, bore_d)
