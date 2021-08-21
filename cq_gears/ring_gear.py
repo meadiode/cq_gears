@@ -6,22 +6,19 @@ import warnings
 
 from .utils import (circle3d_by3points, rotation_matrix, make_spline_approx,
                     make_shell)
-
 from .spur_gear import SpurGear, HerringboneGear
-
 
 
 class RingGear(SpurGear):
 
     def __init__(self, module, teeth_number, width, rim_width,
                  pressure_angle=20.0, helix_angle=0.0, clearance=0.0,
-                 backlash=0.0, curve_points=20, surface_splines=5):
+                 backlash=0.0):
         self.m = m = module
         self.z = z = teeth_number
         self.a0 = a0 = np.radians(pressure_angle)
         self.clearance = clearance
         self.backlash = backlash
-        self.curve_points = curve_points
         self.helix_angle = np.radians(helix_angle)
         self.width = width
         self.rim_width = rim_width
@@ -43,7 +40,6 @@ class RingGear(SpurGear):
         self.tau = tau = np.pi * 2.0 / z # pitch angle
 
         if helix_angle != 0.0:
-            self.surface_splines = surface_splines
             self.twist_angle = width / \
                                 (r0 * np.tan(np.pi / 2.0 - self.helix_angle))
         else:
@@ -53,33 +49,36 @@ class RingGear(SpurGear):
         self.rim_r = rd + rim_width
 
         # Calculate involute curve points for the left side of the tooth
-        r = np.linspace(ra, rr, curve_points)
+        r = np.linspace(ra, rr, self.curve_points)
         cos_a = r0 / r * np.cos(a0)
         a = np.arccos(np.clip(cos_a, -1.0, 1.0))
         inv_a = np.tan(a) - a
         s = r * (s0 / d0 + inv_a0 - inv_a)
         phi = s / r
-        self.tsidel_x = np.cos(phi) * r
-        self.tsidel_y = np.sin(phi) * r
-
+        self.t_lflank_pts = np.dstack((np.cos(phi) * r,
+                                       np.sin(phi) * r,
+                                       np.zeros(self.curve_points))).squeeze()
 
         # Calculate tooth tip points - an arc lying on the addendum circle
-        b = np.linspace(phi[-1], -phi[-1], curve_points)
-        self.ttip_x = np.cos(b) * rd
-        self.ttip_y = np.sin(b) * rd
+        b = np.linspace(phi[-1], -phi[-1], self.curve_points)
+        self.t_tip_pts = np.dstack((np.cos(b) * rd,
+                                    np.sin(b) * rd,
+                                    np.zeros(self.curve_points))).squeeze()
 
 
         # Get right side involute curve points by mirroring the left side
-        self.tsider_x = (np.cos(-phi) * r)[::-1]
-        self.tsider_y = (np.sin(-phi) * r)[::-1]
-
+        self.t_rflank_pts = np.dstack(((np.cos(-phi) * r)[::-1],
+                                       (np.sin(-phi) * r)[::-1],
+                                       np.zeros(self.curve_points))).squeeze()
 
         # Calculate tooth root points - an arc that starts at the right side of
         # the tooth and goes to the left side of the next tooth. The mid-point
         # of that arc lies on the dedendum circle.
         rho = tau - phi[0] * 2.0
         # Get the three points defining the arc
-        p1 = np.array((self.tsider_x[-1], self.tsider_y[-1], 0.0))
+        p1 = np.array((self.t_rflank_pts[-1][0],
+                       self.t_rflank_pts[-1][1],
+                       0.0))
         p2 = np.array((np.cos(-phi[0] - rho / 2.0) * ra,
               np.sin(-phi[0] - rho / 2.0) * ra, 0.0))
         p3 = np.array((np.cos(-phi[0] - rho) * ra,
@@ -95,42 +94,11 @@ class RingGear(SpurGear):
         if t2 < 0.0:
             t2 += np.pi * 2.0
         t1, t2 = min(t1, t2), max(t1, t2)
-        t = np.linspace(t2 + np.pi * 2.0, t1 + np.pi * 2.0, curve_points)
+        t = np.linspace(t2 + np.pi * 2.0, t1 + np.pi * 2.0, self.curve_points)
         
-        self.troot_x = bcxy[0] + bcr * np.cos(t)
-        self.troot_y = bcxy[1] + bcr * np.sin(t)
-
-
-    def _build_horizontal_face(self):
-        tooth_splines = []
-
-        for x, y in zip((self.tsidel_x, self.ttip_x,
-                         self.tsider_x, self.troot_x),
-                        (self.tsidel_y, self.ttip_y,
-                         self.tsider_y, self.troot_y)):
-            pts = []
-
-            for pt in np.dstack((x, y)).squeeze():
-                pts.append(cq.Vector(tuple(pt)))
-
-            tooth_splines.append(cq.Edge.makeSpline(pts))
-
-        tooth_wire = cq.Wire.assembleEdges(tooth_splines)
-
-        wires = []
-        for i in range(self.z): 
-            wires.append(tooth_wire.rotate((0.0, 0.0, 0.0),
-                                           (0.0, 0.0, 1.0),
-                                           np.degrees(self.tau) * i))
-
-        rim = cq.Wire.makeCircle(self.rim_r,
-                                 cq.Vector(0.0, 0.0, 0.0),
-                                 cq.Vector(0.0, 0.0, 1.0))
-        
-        wr = cq.Wire.combine(wires)
-        face = cq.Face.makeFromWires(rim, wr)
-
-        return face
+        self.t_root_pts = np.dstack((bcxy[0] + bcr * np.cos(t),
+                                     bcxy[1] + bcr * np.sin(t),
+                                     np.zeros(self.curve_points))).squeeze()
 
 
     def _build_rim_face(self):
@@ -152,9 +120,38 @@ class RingGear(SpurGear):
 
         return faces
 
+    def _build_gear_faces(self):
+        t_faces = self._build_tooth_faces(0.0, self.twist_angle,
+                                          0.0, self.width)
+        faces = []
+        for i in range(self.z):
+            for tf in t_faces:
+                faces.append(tf.rotate((0.0, 0.0, 0.0),
+                                       (0.0, 0.0, 1.0),
+                                       np.degrees(self.tau * i)))
+        wp = cq.Workplane('XY').add(faces)
+        
+        topface_wires = cq.Wire.combine(wp.edges('<Z').vals(),
+                                        tol=self.wire_comb_tol)
+        topface_rim_wire = cq.Wire.makeCircle(self.rim_r,
+                                              cq.Vector(0.0, 0.0, 0.0),
+                                              cq.Vector(0.0, 0.0, 1.0))
+        topface = cq.Face.makeFromWires(topface_rim_wire, topface_wires)
+        
+        botface_wires = cq.Wire.combine(wp.edges('>Z').vals(),
+                                        tol=self.wire_comb_tol)
+        botface_rim_wire = cq.Wire.makeCircle(self.rim_r,
+                                              cq.Vector(0.0, 0.0, self.width),
+                                              cq.Vector(0.0, 0.0, 1.0))
+        botface = cq.Face.makeFromWires(botface_rim_wire, botface_wires)
+        wp = wp.add(topface).add(botface)
+        wp = wp.add(self._build_rim_face())
+
+        return wp.vals()
+
 
     def build(self):
-        faces = self._build_faces()
+        faces = self._build_gear_faces()
 
         shell = make_shell(faces)
         body = cq.Solid.makeSolid(shell)
@@ -165,21 +162,14 @@ class RingGear(SpurGear):
 class HerringboneRingGear(RingGear):
 
 
-    def _build_faces(self):
-        faces1 = self._build_profile(0.0, self.twist_angle,
-                                     0.0, self.width / 2.0)
-        faces2 = self._build_profile(self.twist_angle, 0.0,
-                                     self.width / 2.0, self.width / 2.0)
-        faces = faces1 + faces2
-
-        bottom = self._build_horizontal_face()
-        top = bottom.translate((0.0, 0.0, self.width))
-        faces.append(bottom)
-        faces.append(top)
-
-        faces.append(self._build_rim_face())
-
-        return faces
+    def _build_tooth_faces(self, twist_angle_a, twist_angle_b, z_pos, width):
+        t_faces1 = (super(HerringboneRingGear, self)
+                    ._build_tooth_faces(0.0, self.twist_angle,
+                                        0.0, self.width / 2.0))
+        t_faces2 = (super(HerringboneRingGear, self)
+                    ._build_tooth_faces(self.twist_angle, 0.0,
+                                        self.width / 2.0, self.width / 2.0))
+        return t_faces1 + t_faces2
 
 
 class PlanetaryGearset:
@@ -198,25 +188,19 @@ class PlanetaryGearset:
                                  pressure_angle=pressure_angle,
                                  helix_angle=helix_angle,
                                  clearance=clearance,
-                                 backlash=backlash,
-                                 curve_points=curve_points,
-                                 surface_splines=surface_splines)
+                                 backlash=backlash)
 
         self.planet = self.gear_cls(module, planet_teeth_number, width,
                                     pressure_angle=pressure_angle,
                                     helix_angle=-helix_angle,
                                     clearance=clearance,
-                                    backlash=backlash,
-                                    curve_points=curve_points,
-                                    surface_splines=surface_splines)
+                                    backlash=backlash)
 
         self.ring = self.ring_gear_cls(module, ring_z, width, rim_width,
                                        pressure_angle=pressure_angle,
                                        helix_angle=-helix_angle,
                                        clearance=clearance,
-                                       backlash=backlash,
-                                       curve_points=curve_points,
-                                       surface_splines=surface_splines)
+                                       backlash=backlash)
 
         self.orbit_r = self.sun.r0 + self.planet.r0
         self.n_planets = n_planets
@@ -254,11 +238,13 @@ class PlanetaryGearset:
                 tobuild = [True, ] * self.n_planets
             args = {**kv_args, **planet_build_args}
 
+            planet_body = self.planet.build(**args)
+            
             for i in range(self.n_planets):
                 if not tobuild[i]:
                     continue
 
-                planet = (self.planet.build(**args)
+                planet = (planet_body
                           .rotate((0.0, 0.0, 0.0), (0.0, 0.0, 1.0),
                                   np.degrees(self.planet.tau / 2.0))
                           .translate((np.cos(i * planet_a) * self.orbit_r,

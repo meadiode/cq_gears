@@ -284,9 +284,7 @@ class BevelGear:
 
         if trim_top:
             body = self._trim_top(body)
-
-        if bore_d:
-            body = self._make_bore(body, bore_d)
+        body = self._make_bore(body, bore_d)
 
         # Put the gear on its bottom
         body = (body

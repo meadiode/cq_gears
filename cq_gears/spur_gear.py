@@ -366,30 +366,15 @@ class SpurGear(GearBase):
 
 class HerringboneGear(SpurGear):
 
-    def _build_gear_faces(self):
-        t_faces1 = self._build_tooth_faces(0.0, self.twist_angle,
-                                           0.0, self.width / 2.0)
-        t_faces2 = self._build_tooth_faces(self.twist_angle, 0.0,
-                                           self.width / 2.0, self.width / 2.0)
-        t_faces = t_faces1 + t_faces2
 
-        faces = []
-        for i in range(self.z):
-            for tf in t_faces:
-                faces.append(tf.rotate((0.0, 0.0, 0.0),
-                                       (0.0, 0.0, 1.0),
-                                       np.degrees(self.tau * i)))
-        wp = cq.Workplane('XY').add(faces)
-        
-        topface_wires = cq.Wire.combine(wp.edges('<Z').vals(),
-                                        tol=self.wire_comb_tol)
-        topface = cq.Face.makeFromWires(topface_wires[0])
-        botface_wires = cq.Wire.combine(wp.edges('>Z').vals(),
-                                        tol=self.wire_comb_tol)
-        botface = cq.Face.makeFromWires(botface_wires[0])
-        wp = wp.add(topface).add(botface)
-
-        return wp.vals()
+    def _build_tooth_faces(self, twist_angle_a, twist_angle_b, z_pos, width):
+        t_faces1 = (super(HerringboneGear, self)
+                    ._build_tooth_faces(0.0, self.twist_angle,
+                                        0.0, self.width / 2.0))
+        t_faces2 = (super(HerringboneGear, self)
+                    ._build_tooth_faces(self.twist_angle, 0.0,
+                                        self.width / 2.0, self.width / 2.0))
+        return t_faces1 + t_faces2
 
 
     def _remove_teeth(self, body, t1, t2):
