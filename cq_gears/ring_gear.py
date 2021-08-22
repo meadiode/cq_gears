@@ -179,8 +179,7 @@ class PlanetaryGearset:
 
     def __init__(self, module, sun_teeth_number, planet_teeth_number, width,
                  rim_width, n_planets, pressure_angle=20.0,
-                 helix_angle=0.0, clearance=0.0, backlash=0.0, curve_points=20,
-                 surface_splines=5):
+                 helix_angle=0.0, clearance=0.0, backlash=0.0):
 
         ring_z = sun_teeth_number + planet_teeth_number * 2
 

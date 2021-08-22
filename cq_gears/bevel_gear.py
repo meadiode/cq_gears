@@ -14,7 +14,7 @@ class BevelGear(GearBase):
 
     def __init__(self, module, teeth_number, cone_angle, face_width,
                  pressure_angle=20.0, helix_angle=0.0, clearance=0.0,
-                 backlash=0.0, curve_points=20, surface_splines=5):
+                 backlash=0.0):
         
         self.m = m = module
         self.z = z = teeth_number
@@ -53,25 +53,27 @@ class BevelGear(GearBase):
             self.surface_splines = 2
             self.twist_angle = 0.0
 
-        # The distance between sphere's center and the bottom of the gear
+        # The distance between the cone apex and the bottom of the gear
         self.cone_h = np.cos(gamma_r) * gs_r
 
         # Tooth mirror point azimuth angle
         phi_r = s_inv(gamma_b, gamma_p);
-        mp_theta = np.pi / z + 2.0 * phi_r
+        self.mp_theta = mp_theta = np.pi / z + 2.0 * phi_r
 
         # Tooth left flank curve points
         gamma_tr = max(gamma_b, gamma_r)
-        gamma = np.linspace(gamma_tr, gamma_f, curve_points)
+        gamma = np.linspace(gamma_tr, gamma_f, self.curve_points)
         theta = s_inv(gamma_b, gamma)
         self.t_lflank_pts = np.dstack(sphere_to_cartesian(1.0,
                                                           gamma,
                                                           theta)).squeeze()
         # Tooth tip curve points
-        theta_tip = np.linspace(theta[-1], mp_theta - theta[-1], curve_points)
+        theta_tip = np.linspace(theta[-1],
+                                mp_theta - theta[-1],
+                                self.curve_points)
         self.t_tip_pts = np.dstack(
                             sphere_to_cartesian(1.0,
-                                                np.full(curve_points,
+                                                np.full(self.curve_points,
                                                         gamma_f),
                                                 theta_tip)).squeeze()
 
@@ -98,15 +100,15 @@ class BevelGear(GearBase):
                                               rcc_gamma,
                                               np.pi / 2.0 + a_start,
                                               np.pi / 2.0 + a_end,
-                                              curve_points)).squeeze()
+                                              self.curve_points)).squeeze()
         else:
             r_theta = np.linspace(mp_theta - theta[0],
-                                  theta[0] + tau, curve_points)
+                                  theta[0] + tau, self.curve_points)
             self.t_root_pts = np.dstack(
-                                    sphere_to_cartesian(1.0,
-                                                        np.full(curve_points,
-                                                                gamma_tr),
-                                                        r_theta)).squeeze()
+                                sphere_to_cartesian(1.0,
+                                                    np.full(self.curve_points,
+                                                            gamma_tr),
+                                                    r_theta)).squeeze()
 
 
     def tooth_points(self):
@@ -134,7 +136,7 @@ class BevelGear(GearBase):
         pc_f = pc_h / np.cos(self.gamma_f) # extended pitch cone flank length
         pc_rb = pc_f * np.sin(self.gamma_f) # pitch cone base radius
 
-            # top cone height
+        # top cone height
         tc_h = np.cos(self.gamma_f) * (self.gs_r - self.face_width)
         tc_f = tc_h / np.cos(self.gamma_r) # top cone flank length
         tc_rb = tc_f * np.sin(self.gamma_f) # top cone base radius
@@ -144,7 +146,7 @@ class BevelGear(GearBase):
         ta2 = (self.gs_r - tc_f) / self.face_width * self.twist_angle
 
         # Transformation parameters: (radius, twist angle)
-        spline_tf = np.linspace((tc_f, ta1), (pc_f, ta2))
+        spline_tf = np.linspace((pc_f, ta1), (tc_f - 0.01, ta2))
 
         tcp_size = tc_rb * 1000.0
         top_cut_plane = cq.Face.makePlane(length=tcp_size, width=tcp_size,
@@ -154,6 +156,7 @@ class BevelGear(GearBase):
         bott_cut_plane = cq.Face.makePlane(length=bcp_size, width=bcp_size,
                                            basePnt=(0.0, 0.0, pc_h),
                                            dir=(0.0, 0.0, 1.0))
+
 
         def get_zmax(face):
             bb = face.BoundingBox()
@@ -192,7 +195,7 @@ class BevelGear(GearBase):
 
     def _build_gear_faces(self):
         t_faces = self._build_tooth_faces()
-        
+
         faces = []
         for i in range(self.z):
             for tf in t_faces:
@@ -283,9 +286,79 @@ class BevelGear(GearBase):
         body = self._trim_top(body, trim_top)
         body = self._make_bore(body, bore_d)
 
-        # Put the gear on its bottom
+        t_align_angle = -self.mp_theta / 2.0 - np.pi / 2.0 + np.pi / self.z
+
+        # Put the gear on its bottom and align one of the teeth to x axis
         body = (body
                 .rotate((0.0, 0.0, 0.0), (1.0, 0.0, 0.0), 180.0)
-                .translate((0.0, 0.0, self.cone_h)))
+                .translate((0.0, 0.0, self.cone_h))
+                .rotate((0.0, 0.0, 0.0), (0.0, 0.0, 1.0),
+                        np.degrees(t_align_angle)))
 
         return body
+
+
+class BevelGearPair:
+
+    gear_cls = BevelGear
+    
+    def __init__(self, module, gear_teeth, pinion_teeth, face_width,
+                 axis_angle=90.0, pressure_angle=20.0, helix_angle=0.0,
+                 clearance=0.0):
+        
+        self.axis_angle = axis_angle = np.radians(axis_angle)
+        
+        aa_sin = np.sin(axis_angle)
+        aa_cos = np.cos(axis_angle)
+
+        # Cone Angle of the Gear
+        delta_gear = np.arctan(aa_sin / (pinion_teeth / gear_teeth + aa_cos))
+        
+        # Cone Angle of the Pinion
+        delta_pinion = np.arctan(aa_sin / (gear_teeth / pinion_teeth + aa_cos))
+        
+        self.gear = self.gear_cls(module, gear_teeth, np.degrees(delta_gear),
+                                  face_width, pressure_angle, helix_angle,
+                                  clearance)
+        
+        self.pinion = self.gear_cls(module, pinion_teeth,
+                                    np.degrees(delta_pinion), face_width,
+                                    pressure_angle, -helix_angle)
+
+
+    def build(self, gear=True, pinion=True, transform_pinion=True,
+              gear_build_args={}, pinion_build_args={}, **kv_args):
+
+        gearset = cq.Workplane('XY')
+
+        if gear:
+            args = {**kv_args, **gear_build_args}
+            gear = self.gear.build(**args)
+
+            gearset.add(gear)
+
+        if pinion:
+            args = {**kv_args, **pinion_build_args}
+            pinion = self.pinion.build(**args)
+
+            if transform_pinion:
+                dist = -self.pinion.cone_h + self.gear.cone_h
+                angle = np.pi / 2.0 - self.axis_angle
+
+                if self.pinion.z % 2 == 0:
+                    pinion = pinion.rotate(
+                                    (0.0, 0.0, 0.0),
+                                    (0.0, 0.0, 1.0),
+                                    np.degrees(np.pi / self.pinion.z))
+
+                pinion = (pinion
+                          .rotate((0.0, -1.0, self.gear.cone_h),
+                                  (0.0, 1.0, self.gear.cone_h),
+                                   np.degrees(self.axis_angle))
+                          .translate((dist * np.cos(angle),
+                                      0.0,
+                                      dist * np.sin(angle))))
+
+            gearset.add(pinion)
+
+        return gearset
