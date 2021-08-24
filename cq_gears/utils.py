@@ -3,13 +3,7 @@
 import numpy as np
 import cadquery as cq
 
-from OCP.Precision import Precision
-from OCP.TColgp import TColgp_HArray2OfPnt, TColgp_HArray1OfPnt
-from OCP.GeomAPI import (GeomAPI_PointsToBSplineSurface,
-                         GeomAPI_PointsToBSpline)
-from OCP.BRepBuilderAPI import (BRepBuilderAPI_MakeFace,
-                                BRepBuilderAPI_Sewing)
-
+from OCP.BRepBuilderAPI import BRepBuilderAPI_Sewing
 
 #
 # Math utility functions
@@ -114,87 +108,9 @@ def angle_between(o, a, b):
     return np.arccos(np.dot(p, q) / (np.linalg.norm(p) * np.linalg.norm(q)))
 
 
-def project_to_xy_from_sphere_center(pts, sphere_r):
-    gammas = np.arccos(np.dot(pts, np.array((0.0, 0.0, 1.0))) / \
-                       np.linalg.norm(pts, axis=1))
-    thetas = np.arctan2(pts[:, 0], pts[:, 1])
-    radiuses = sphere_r /  np.cos(gammas)
-    proj_pts = np.dstack(sphere_to_cartesian(radiuses,
-                                             gammas, thetas)).squeeze()
-    
-    return proj_pts
-
-
-def intersection_ray_xy(points_a, points_b, offset_z):
-    ''' Get intersection point between a ray defined by points a and b
-        and a plane XY with Z-offset equal to offset_z
-    '''
-    ab = points_b - points_a
-    t = (points_a[:, 2] - offset_z) / -ab[:, 2]
-    res = points_a + ab * np.expand_dims(t, 1)
-    return res
-
-
 #
 # OpenCascade utility functions
 #
-
-
-def make_spline_approx(points, tol=1e-2, smoothing=None, minDeg=1, maxDeg=3):
-    '''
-    Approximate a surface through the provided points.
-    '''
-    points_ = TColgp_HArray2OfPnt(1, len(points), 1, len(points[0]))
-
-    for i, vi in enumerate(points):
-        for j, v in enumerate(vi):
-            v = cq.Vector(*v)
-            points_.SetValue(i + 1, j + 1, v.toPnt())
-
-    if smoothing:
-        spline_builder = GeomAPI_PointsToBSplineSurface(
-            points_, *smoothing, DegMax=maxDeg, Tol3D=tol
-        )
-    else:
-        spline_builder = GeomAPI_PointsToBSplineSurface(
-            points_, DegMin=minDeg, DegMax=maxDeg, Tol3D=tol
-        )
-
-    if not spline_builder.IsDone():
-        raise ValueError("B-spline approximation failed")
-
-    spline_geom = spline_builder.Surface()
-
-    return cq.Face(BRepBuilderAPI_MakeFace(spline_geom,
-                                           Precision.Confusion_s()).Face())
-
-
-def make_spline_approx_1d(points, tol=1e-3, smoothing=None, minDeg=1, maxDeg=6):
-    '''
-    Approximate a spline through the provided points.
-    '''
-    points_ = TColgp_HArray1OfPnt(1, len(points))
-    
-    for ix, v in enumerate(points):
-        v = cq.Vector(*v)
-        points_.SetValue(ix + 1, v.toPnt())
-
-    if smoothing:
-        spline_builder = GeomAPI_PointsToBSpline(
-                            points_, *smoothing, DegMax=maxDeg, Tol3D=tol
-                         )
-    else:
-        spline_builder = GeomAPI_PointsToBSpline(
-                            points_, DegMin=minDeg, DegMax=maxDeg, Tol3D=tol
-                         )
-
-    if not spline_builder.IsDone():
-        raise ValueError("B-spline approximation failed")
-
-    spline_geom = spline_builder.Curve()
-
-    return cq.Edge(BRepBuilderAPI_MakeEdge(spline_geom).Edge())
-
 
 def make_shell(faces, tol=1e-2):
     '''

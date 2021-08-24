@@ -3,10 +3,9 @@
 import numpy as np
 import cadquery as cq
 
-from .utils import (circle3d_by3points, rotation_matrix, make_spline_approx,
-                    s_inv, s_arc, angle_between, sphere_to_cartesian,
-                    make_shell, project_to_xy_from_sphere_center,
-                    intersection_ray_xy)
+from .utils import (circle3d_by3points, rotation_matrix, s_inv, s_arc,
+                    angle_between, sphere_to_cartesian, make_shell)
+
 from .spur_gear import GearBase
 
 
@@ -169,10 +168,14 @@ class BevelGear(GearBase):
 
             for r, a in spline_tf:
                 r_mat = rotation_matrix((0.0, 0.0, 1.0), a)
-                face_pts.append((spline @ r_mat) * r)
+                pts = (spline @ r_mat) * r
+                face_pts.append([cq.Vector(*pt) for pt in pts])
 
             # Make faces out of the points
-            face = make_spline_approx(face_pts)
+            face = cq.Face.makeSplineApprox(face_pts,
+                                            tol=self.spline_approx_tol,
+                                            minDeg=self.spline_approx_min_deg,
+                                            maxDeg=self.spline_approx_max_deg)
 
             # Trim top
             cpd = face.split(top_cut_plane)

@@ -3,8 +3,7 @@
 import numpy as np
 import cadquery as cq
 
-from .utils import (circle3d_by3points, rotation_matrix, make_spline_approx,
-                    make_shell)
+from .utils import circle3d_by3points, rotation_matrix, make_shell
 
 
 class GearBase:

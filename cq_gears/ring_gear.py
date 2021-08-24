@@ -4,8 +4,7 @@ import numpy as np
 import cadquery as cq
 import warnings
 
-from .utils import (circle3d_by3points, rotation_matrix, make_spline_approx,
-                    make_shell)
+from .utils import circle3d_by3points, rotation_matrix, make_shell
 from .spur_gear import SpurGear, HerringboneGear
 
 
