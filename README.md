@@ -81,7 +81,7 @@ The result:
 
 Here multiple copies of a gear placed at each point on the stack.
 Note that you can use the spur_gear object to reference pre-calculated dimensions such as pitch-radius.
-Also note that build parameters (such as *bore_d*, *hub_d*, *hub_length* etc.) could be passed either to the SpurGear constructor, or the gear and add_gear functions.
+Also note that build parameters (such as *bore_d*, *hub_d*, *hub_length* etc.) could be passed either to the SpurGear constructor, or to the gear and add_gear functions.
 
 Check out other examples from the examples directory:
 
