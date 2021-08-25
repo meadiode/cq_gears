@@ -13,7 +13,7 @@ class BevelGear(GearBase):
 
     def __init__(self, module, teeth_number, cone_angle, face_width,
                  pressure_angle=20.0, helix_angle=0.0, clearance=0.0,
-                 backlash=0.0):
+                 backlash=0.0, **build_params):
         
         self.m = m = module
         self.z = z = teeth_number
@@ -51,6 +51,8 @@ class BevelGear(GearBase):
         else:
             self.surface_splines = 2
             self.twist_angle = 0.0
+
+        self.build_params = build_params
 
         # The distance between the cone apex and the bottom of the gear
         self.cone_h = np.cos(gamma_r) * gs_r
@@ -239,7 +241,7 @@ class BevelGear(GearBase):
 
         body = cq.Workplane('XY').add(body).cut(trimmer)
 
-        return body
+        return body.val()
 
 
     def _trim_top(self, body, do_trim=False):
@@ -261,7 +263,7 @@ class BevelGear(GearBase):
 
         body = cq.Workplane('XY').add(body).cut(trimmer)
 
-        return body
+        return body.val()
 
 
     def _make_bore(self, body, bore_d):
@@ -273,13 +275,12 @@ class BevelGear(GearBase):
                 .faces('<Z')
                 .workplane()
                 .circle(bore_d / 2.0)
-                .cutThruAll()
-               ).val()
+                .cutThruAll())
         
-        return body
+        return body.val()
 
 
-    def build(self, bore_d=None, trim_bottom=True, trim_top=True):
+    def _build(self, bore_d=None, trim_bottom=True, trim_top=True):
         faces = self._build_gear_faces()
 
         shell = make_shell(faces)
@@ -287,27 +288,29 @@ class BevelGear(GearBase):
 
         body = self._trim_bottom(body, trim_bottom)
         body = self._trim_top(body, trim_top)
-        body = self._make_bore(body, bore_d)
 
         t_align_angle = -self.mp_theta / 2.0 - np.pi / 2.0 + np.pi / self.z
 
         # Put the gear on its bottom and align one of the teeth to x axis
-        body = (body
+        body = (cq.Workplane('XY')
+                .add(body)
                 .rotate((0.0, 0.0, 0.0), (1.0, 0.0, 0.0), 180.0)
                 .translate((0.0, 0.0, self.cone_h))
                 .rotate((0.0, 0.0, 0.0), (0.0, 0.0, 1.0),
-                        np.degrees(t_align_angle)))
+                        np.degrees(t_align_angle))).val()
+
+        body = self._make_bore(body, bore_d)
 
         return body
 
 
-class BevelGearPair:
+class BevelGearPair(GearBase):
 
     gear_cls = BevelGear
     
     def __init__(self, module, gear_teeth, pinion_teeth, face_width,
                  axis_angle=90.0, pressure_angle=20.0, helix_angle=0.0,
-                 clearance=0.0):
+                 clearance=0.0, **build_params):
         
         self.axis_angle = axis_angle = np.radians(axis_angle)
         
@@ -327,10 +330,11 @@ class BevelGearPair:
         self.pinion = self.gear_cls(module, pinion_teeth,
                                     np.degrees(delta_pinion), face_width,
                                     pressure_angle, -helix_angle)
+        self.build_params = build_params
 
 
-    def build(self, gear=True, pinion=True, transform_pinion=True,
-              gear_build_args={}, pinion_build_args={}, **kv_args):
+    def _build(self, gear=True, pinion=True, transform_pinion=True,
+               gear_build_args={}, pinion_build_args={}, **kv_args):
 
         gearset = cq.Workplane('XY')
 
@@ -364,4 +368,9 @@ class BevelGearPair:
 
             gearset.add(pinion)
 
-        return gearset
+        gearset = gearset.vals()
+        
+        if len(gearset) == 1:
+            return gearset[0]
+
+        return cq.Compound.makeCompound(gearset)

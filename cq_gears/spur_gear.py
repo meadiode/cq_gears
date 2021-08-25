@@ -19,12 +19,23 @@ class GearBase:
     spline_approx_min_deg = 1 # Minimum surface spline degree
     spline_approx_max_deg = 6 # Maximum surface spline degree
 
+    
+    def __init__(self, *args, **kv_args):
+        raise NotImplementedError('Constructor is not defined')
+
+    
+    def build(self, **kv_params):
+        params = {**self.build_params, **kv_params}
+        
+        return self._build(**params)
+
+
 
 class SpurGear(GearBase):
 
     def __init__(self, module, teeth_number, width,
                  pressure_angle=20.0, helix_angle=0.0, clearance=0.0,
-                 backlash=0.0):
+                 backlash=0.0, **build_params):
         self.m = m = module
         self.z = z = teeth_number
         self.a0 = a0 = np.radians(pressure_angle)
@@ -55,6 +66,8 @@ class SpurGear(GearBase):
         else:
             self.surface_splines = 2
             self.twist_angle = 0.0
+
+        self.build_params = build_params
 
         # Calculate involute curve points for the left side of the tooth
         r = np.linspace(rr, ra, self.curve_points)
@@ -234,7 +247,7 @@ class SpurGear(GearBase):
 
         body = (cq.Workplane('XY')
                 .add(body)
-                .cut(cutout))
+                .cut(cutout)).val()
 
         return body
 
@@ -267,7 +280,7 @@ class SpurGear(GearBase):
         if hub_d is not None:
             body = body.circle(hub_d / 2.0)
 
-        body = body.circle(recess_d / 2.0).cutBlind(-recess)
+        body = body.circle(recess_d / 2.0).cutBlind(-recess).val()
 
         return body
 
@@ -288,7 +301,7 @@ class SpurGear(GearBase):
 
         body = body.circle(hub_d / 2.0).extrude(hub_length)
 
-        return body
+        return body.val()
 
 
     def _make_spokes(self, body, spokes_id, spokes_od, n_spokes,
@@ -327,18 +340,20 @@ class SpurGear(GearBase):
         if spoke_fillet is not None:
             cutout = cutout.edges('|Z').fillet(spoke_fillet)
 
+        body = cq.Workplane('XY').add(body)
+
         for i in range(n_spokes):
             body = body.cut(cutout.rotate((0.0, 0.0, 0.0),
                                           (0.0, 0.0, 1.0),
                                           np.degrees(tau * i)))
 
-        return body
+        return body.val()
 
 
-    def build(self, bore_d=None, missing_teeth=None,
-              hub_d=None, hub_length=None, recess_d=None, recess=None,
-              n_spokes=None, spoke_width=None, spoke_fillet=None,
-              spokes_id=None, spokes_od=None):
+    def _build(self, bore_d=None, missing_teeth=None,
+               hub_d=None, hub_length=None, recess_d=None, recess=None,
+               n_spokes=None, spoke_width=None, spoke_fillet=None,
+               spokes_id=None, spokes_od=None):
         faces = self._build_gear_faces()
 
         shell = make_shell(faces, tol=self.shell_sewing_tol)
@@ -360,7 +375,6 @@ class SpurGear(GearBase):
 
 
         return body
-
 
 
 class HerringboneGear(SpurGear):

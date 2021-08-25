@@ -5,14 +5,14 @@ import cadquery as cq
 import warnings
 
 from .utils import circle3d_by3points, rotation_matrix, make_shell
-from .spur_gear import SpurGear, HerringboneGear
+from .spur_gear import GearBase, SpurGear, HerringboneGear
 
 
 class RingGear(SpurGear):
 
     def __init__(self, module, teeth_number, width, rim_width,
                  pressure_angle=20.0, helix_angle=0.0, clearance=0.0,
-                 backlash=0.0):
+                 backlash=0.0, **build_params):
         self.m = m = module
         self.z = z = teeth_number
         self.a0 = a0 = np.radians(pressure_angle)
@@ -46,6 +46,7 @@ class RingGear(SpurGear):
             self.twist_angle = 0.0
 
         self.rim_r = rd + rim_width
+        self.build_params = build_params
 
         # Calculate involute curve points for the left side of the tooth
         r = np.linspace(ra, rr, self.curve_points)
@@ -149,7 +150,7 @@ class RingGear(SpurGear):
         return wp.vals()
 
 
-    def build(self):
+    def _build(self):
         faces = self._build_gear_faces()
 
         shell = make_shell(faces)
@@ -171,14 +172,14 @@ class HerringboneRingGear(RingGear):
         return t_faces1 + t_faces2
 
 
-class PlanetaryGearset:
+class PlanetaryGearset(GearBase):
 
     gear_cls = SpurGear
     ring_gear_cls = RingGear
 
     def __init__(self, module, sun_teeth_number, planet_teeth_number, width,
                  rim_width, n_planets, pressure_angle=20.0,
-                 helix_angle=0.0, clearance=0.0, backlash=0.0):
+                 helix_angle=0.0, clearance=0.0, backlash=0.0, **build_params):
 
         ring_z = sun_teeth_number + planet_teeth_number * 2
 
@@ -210,10 +211,11 @@ class PlanetaryGearset:
                           'teeth for the sun/planet gears and the number '
                           'of planets')
 
+        self.build_params = build_params
 
 
-    def build(self, sun=True, planets=True, ring=True,
-              sun_build_args={}, planet_build_args={}, **kv_args):
+    def _build(self, sun=True, planets=True, ring=True,
+               sun_build_args={}, planet_build_args={}, **kv_args):
 
         gearset = cq.Workplane('XY')
 
@@ -256,7 +258,12 @@ class PlanetaryGearset:
                             np.degrees(self.ring.tau / 2.0)))
             gearset.add(ring)
 
-        return gearset
+        gearset = gearset.vals()
+        
+        if len(gearset) == 1:
+            return gearset[0]
+
+        return cq.Compound.makeCompound(gearset)
 
 
 class HerringbonePlanetaryGearset(PlanetaryGearset):
