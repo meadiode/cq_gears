@@ -315,7 +315,7 @@ class BevelGear(GearBase):
                 .rotate((0.0, 0.0, 0.0), (1.0, 0.0, 0.0), 180.0)
                 .translate((0.0, 0.0, self.cone_h))
                 .rotate((0.0, 0.0, 0.0), (0.0, 0.0, 1.0),
-                        np.degrees(t_align_angle))).val()
+                        np.degrees(t_align_angle))).solids().val()
 
         body = self._make_bore(body, bore_d)
 
