@@ -3,3 +3,6 @@
 */.ipynb_checkpoints/*
 trash_bin/*
 Untitled*.ipynb
+build/*
+dist/*
+*.egg-info/*
