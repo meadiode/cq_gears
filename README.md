@@ -16,6 +16,7 @@ Can generate the following types of gears:
 
 ## Installation
 Assuming you already have **CadQuery** environment installed (if not, please follow instructions [here](https://github.com/CadQuery/cadquery/blob/master/README.md) first).
+Note: The latest **developer version** of CadQuery is required. The release version 2.1 **will not work**.
 
 To install with pip:
 ```
@@ -37,7 +38,7 @@ Also, some example notebooks use [matplotlib]() and [matplotlib widget(ipympl)](
 ## Usage
 
 Minimal example:
-```
+```python
 import cadquery as cq
 from cq_gears import SpurGear
 
@@ -58,7 +59,7 @@ Note that instantiating **SpurGear** (or any other class from **cq_gears**) will
 To actually build the solid object, you shall pass the created gear object to the **gear** or **add_gear** functions from cq.Workplane
 
 Another example:
-```
+```python
 spur_gear = SpurGear(module=1.0, teeth_number=13, width=5.0, bore_d=5.0)
 
 wp = (cq.Workplane('XY')
