@@ -3,13 +3,15 @@ import pytest
 import numpy as np
 import cadquery as cq
 from cq_gears import SpurGear
+import multiprocessing as mp
+import queue
 
 
 MODULE_MIN = 0.05
 MODULE_MAX = 10.0
 
 TEETH_NUMBER_MIN = 3
-TEETH_NUMBER_MAX = 80
+TEETH_NUMBER_MAX = 200
 
 FACE_WIDTH_MIN = 0.1
 FACE_WIDTH_MAX = 1000.0
@@ -21,6 +23,43 @@ HELIX_ANGLE_MIN = -70.0
 HELIX_ANGLE_MAX = 70.0
 
 BBOX_CHECK_TOL = 0.5
+
+
+class CQGearsFailure(Exception):
+    tag = 'UNDEFINED'    
+
+
+class PrecalcFailure(CQGearsFailure):
+    tag = 'PRECALC'
+
+
+class BuildFailure(CQGearsFailure):
+    tag = 'BUILDING'
+
+
+class SolidBuildFailure(CQGearsFailure):
+    tag = 'NOT_SOLID'
+
+
+class VolumeCheckFailure(CQGearsFailure):
+    tag = 'VOLUME'
+
+
+class BBoxZCheckFailure(CQGearsFailure):
+    tag = 'BBOX_Z'
+
+
+class BBoxXYCheckFailure(CQGearsFailure): 
+    tag = 'BBOX_XY'
+
+
+class TimeoutFailure(CQGearsFailure): 
+    tag = 'TIMEOUT'
+
+
+@pytest.fixture
+def test_timeout(request):
+    return request.config.getoption("--test_timeout")
 
 
 class TestSpurGear:
@@ -46,35 +85,73 @@ class TestSpurGear:
 
         for vals in zip(module, teeth_number, width,
                         pressure_angle, helix_angle):
-            params.append({k : v for k, v in zip(TestSpurGear.argnames, vals)})
+            params.append({k : v.item() for k, v in zip(TestSpurGear.argnames, vals)})
 
         return params
 
 
-    def test_spur_gear(self, module, teeth_number, width,
-                       pressure_angle, helix_angle):
+    def test_spur_gear(self, gear_params, json_metadata, test_timeout):
+        json_metadata['gear_params'] = gear_params
+
         try:
-            gear = SpurGear(module, teeth_number, width,
-                            pressure_angle, helix_angle)
+            gear = SpurGear(**gear_params)
         except:
-            raise Exception('PRECALCULATION')
+            json_metadata['failure_tag'] = PrecalcFailure.tag
+            raise PrecalcFailure()
         
+        
+        def gear_build(out_q):
+            try:
+                body = gear.build()
+            except:
+                out_q.put(BuildFailure())
+                return
+
+            # The result should be a solid body
+            if not isinstance(body, cq.Solid):
+                out_q.put(SolidBuildFailure())
+                return
+
+            # Check roughly the resulting volume of the gear
+            vmax = gear.width * np.pi * gear.ra ** 2
+            vmin = gear.width * np.pi * gear.rd ** 2
+
+            if not (vmin < body.Volume() < vmax):
+                out_q.put(VolumeCheckFailure())
+                return
+
+            # Bounding box check
+            bb = body.BoundingBox()
+
+            if abs(gear.width - (bb.zmax - bb.zmin)) > BBOX_CHECK_TOL:
+                out_q.put(BBoxZCheckFailure())
+                return
+
+            maxd = max((bb.xmax - bb.xmin), (bb.ymax - bb.ymin))
+            
+            if abs(gear.ra * 2.0 - maxd) > BBOX_CHECK_TOL:
+                out_q.put(BBoxXYCheckFailure())
+                return
+
+            out_q.put(None)
+
+
+        fmp = mp.get_context(method='fork')
+        
+        proc_res = fmp.Queue()
+        proc = fmp.Process(target=gear_build, args=(proc_res,))
+
+        proc.start()
+
         try:
-            body = gear.build()
-        except:
-            raise Exception('BUILDING')
+            res = proc_res.get(timeout=test_timeout)
+        except (fmp.TimeoutError, queue.Empty):
+            proc.terminate()
+            json_metadata['failure_tag'] = TimeoutFailure.tag
+            raise TimeoutFailure()
 
-        # The result should be a solid body
-        assert isinstance(body, cq.Solid), 'NOT_SOLID'
+        proc.join()
 
-        # Check roughly the resulting volume of the gear
-        vmax = gear.width * np.pi * gear.ra ** 2
-        vmin = gear.width * np.pi * gear.rd ** 2
-        assert vmin < body.Volume() < vmax, 'VOLUME'
-
-        # Bounding box check
-        bb = body.BoundingBox()
-        assert abs(gear.width - (bb.zmax - bb.zmin)) <= BBOX_CHECK_TOL, 'BBOX_Z'
-
-        maxd = max((bb.xmax - bb.xmin), (bb.ymax - bb.ymin))
-        assert abs(gear.ra * 2.0 - maxd) <= BBOX_CHECK_TOL, 'BBOX_XY'
+        if isinstance(res, Exception):
+            json_metadata['failure_tag'] = res.tag
+            raise res

@@ -5,6 +5,7 @@ import pytest
 def pytest_addoption(parser):
     parser.addoption('--rng_seed', action='store', type=int, default=42)
     parser.addoption('--num_test_cases', action='store', type=int, default=10)
+    parser.addoption('--test_timeout', action='store', type=float, default=30.0)
 
 
 def pytest_generate_tests(metafunc):
@@ -13,5 +14,5 @@ def pytest_generate_tests(metafunc):
 
     argnames = metafunc.cls.argnames
     
-    metafunc.parametrize(argnames,
-        [[funcargs[name] for name in argnames] for funcargs in funcarglist])
+    metafunc.parametrize(('gear_params',),
+                         [(funcargs,) for funcargs in funcarglist])
