@@ -1,7 +1,5 @@
+
 import pytest
-import numpy as np
-import cadquery as cq
-from cq_gears import BevelGear
 import multiprocessing as mp
 import queue
 
@@ -89,24 +87,3 @@ class _TestGear:
         if isinstance(res, Exception):
             json_metadata['failure_tag'] = res.tag
             raise res
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

@@ -1,10 +1,10 @@
-import pytest
+
 import numpy as np
 import cadquery as cq
-from cq_gears import BevelGear
+from cq_gears import RingGear, HerringboneRingGear
 
 from utils import (BuildFailure, SolidBuildFailure, VolumeCheckFailure,
-                    BBoxZCheckFailure, BBoxXYCheckFailure)
+                   BBoxZCheckFailure, BBoxXYCheckFailure)
 from utils import _TestGear, test_timeout
 
 
@@ -14,8 +14,11 @@ MODULE_MAX = 10.0
 TEETH_NUMBER_MIN = 3
 TEETH_NUMBER_MAX = 200
 
-CONE_ANGLE_MIN = 1.0
-CONE_ANGLE_MAX = 89.0
+FACE_WIDTH_MIN = 0.1
+FACE_WIDTH_MAX = 1000.0
+
+RIM_WIDTH_MIN = 0.1
+RIM_WIDTH_MAX = 100.0
 
 PRESSURE_ANGLE_MIN = 0.5
 PRESSURE_ANGLE_MAX = 30.0
@@ -26,12 +29,11 @@ HELIX_ANGLE_MAX = 70.0
 BBOX_CHECK_TOL = 0.5
 
 
-class TestBevelGear(_TestGear):
+class TestRingGear(_TestGear):
 
-    gear_cls = BevelGear
-
-    argnames = ['module', 'teeth_number', 'cone_angle', 'face_width',
-                 'pressure_angle', 'helix_angle', 'trim_top', 'trim_bottom']
+    gear_cls = RingGear
+    argnames = ['module', 'teeth_number', 'width', 'rim_width',
+                'pressure_angle', 'helix_angle']
 
     @staticmethod
     def gen_params(seed, n):
@@ -39,28 +41,21 @@ class TestBevelGear(_TestGear):
 
         module = MODULE_MIN + (MODULE_MAX - MODULE_MIN) * rng.random(n)
         teeth_number = rng.integers(TEETH_NUMBER_MIN, TEETH_NUMBER_MAX + 1, n)
-
-        cone_angle =  CONE_ANGLE_MIN + \
-                      (CONE_ANGLE_MAX - CONE_ANGLE_MIN) * rng.random(n)
-
-
-        # Generating random face_width'
-        gamma_p = np.radians(cone_angle)
-        rp = module * teeth_number / 2.0        
-        gs_r = rp / np.sin(gamma_p)
-
-        face_width =  gs_r * rng.random(n)
-
+        width = FACE_WIDTH_MIN + \
+                (FACE_WIDTH_MAX - FACE_WIDTH_MIN) * rng.random(n)
+        rim_width = RIM_WIDTH_MIN + \
+                    (RIM_WIDTH_MAX - RIM_WIDTH_MIN) * rng.random(n)
         pressure_angle = PRESSURE_ANGLE_MIN + \
                     (PRESSURE_ANGLE_MAX - PRESSURE_ANGLE_MIN) * rng.random(n)
         helix_angle = HELIX_ANGLE_MIN + \
                       (HELIX_ANGLE_MAX - HELIX_ANGLE_MIN) * rng.random(n)
         
-        falses = np.full(n, False)
         params = []
-        for vals in zip(module, teeth_number, cone_angle, face_width,
-                        pressure_angle, helix_angle, falses, falses):
-            params.append({k : v.item() for k, v in zip(TestBevelGear.argnames, vals)})
+
+        for vals in zip(module, teeth_number, width, rim_width,
+                        pressure_angle, helix_angle):
+            params.append({k : v.item() \
+                           for k, v in zip(TestRingGear.argnames, vals)})
 
         return params
 
@@ -79,19 +74,9 @@ class TestBevelGear(_TestGear):
             return
 
         # Check roughly the resulting volume of the gear
-
-        fcone_r = gear.cone_h * np.tan(gear.gamma_f)
-        rcone_r = gear.cone_h * np.tan(gear.gamma_r)
-        tc_h = np.cos(gear.gamma_f) * (gear.gs_r - gear.face_width)
-
-        tfcone_r = tc_h * np.tan(gear.gamma_f)
-        trcone_r = tc_h * np.tan(gear.gamma_r)
-
-        vmax = (np.pi * (gear.cone_h / 3.0) * fcone_r ** 2) - \
-               (np.pi * (tc_h / 3.0) * tfcone_r ** 2)
-
-        vmin = (np.pi * (gear.cone_h / 3.0) * rcone_r ** 2) - \
-               (np.pi * (tc_h / 3.0) * trcone_r ** 2)
+        vcyl = gear.width * np.pi * gear.rim_r ** 2
+        vmax = vcyl - gear.width * np.pi * gear.ra ** 2
+        vmin = vcyl - gear.width * np.pi * gear.rd ** 2
 
         if not (vmin < body.Volume() < vmax):
             out_q.put(VolumeCheckFailure())
@@ -100,17 +85,18 @@ class TestBevelGear(_TestGear):
         # Bounding box check
         bb = body.BoundingBox()
 
-        width = gear.cone_h - \
-                np.cos(gear.gamma_f) * (gear.gs_r - gear.face_width)
-
-        if abs(width - (bb.zmax + bb.zmin)) > BBOX_CHECK_TOL:
+        if abs(gear.width - (bb.zmax - bb.zmin)) > BBOX_CHECK_TOL:
             out_q.put(BBoxZCheckFailure())
             return
 
         maxd = max((bb.xmax - bb.xmin), (bb.ymax - bb.ymin))
         
-        if abs(fcone_r * 2.0 - maxd) > BBOX_CHECK_TOL:
+        if abs(gear.rim_r * 2.0 - maxd) > BBOX_CHECK_TOL:
             out_q.put(BBoxXYCheckFailure())
             return
 
         out_q.put(None)
+
+
+class TestHerringboneRingGear(TestRingGear):
+    gear_cls = HerringboneRingGear
