@@ -17,13 +17,14 @@ limitations under the License.
 '''
 
 
-__version__='0.45'
+__version__='0.56'
 
 import cadquery as cq
 from .spur_gear import SpurGear, HerringboneGear
 from .ring_gear import (RingGear, HerringboneRingGear, PlanetaryGearset,
                         HerringbonePlanetaryGearset)
 from .bevel_gear import BevelGear, BevelGearPair
+from .rack_gear import RackGear
 
 __all__ = [
     'SpurGear',
@@ -34,6 +35,7 @@ __all__ = [
     'HerringbonePlanetaryGearset',
     'BevelGear',
     'BevelGearPair',
+    'RackGear',
 ]
 
 
