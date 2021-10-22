@@ -17,13 +17,14 @@ limitations under the License.
 '''
 
 
-__version__='0.45'
+__version__='0.51'
 
 import cadquery as cq
 from .spur_gear import SpurGear, HerringboneGear
 from .ring_gear import (RingGear, HerringboneRingGear, PlanetaryGearset,
                         HerringbonePlanetaryGearset)
 from .bevel_gear import BevelGear, BevelGearPair
+from .rack_gear import RackGear, HerringboneRackGear
 
 __all__ = [
     'SpurGear',
@@ -34,6 +35,8 @@ __all__ = [
     'HerringbonePlanetaryGearset',
     'BevelGear',
     'BevelGearPair',
+    'RackGear',
+    'HerringboneRackGear',
 ]
 
 
@@ -52,7 +55,7 @@ def gear(self, gear_, *build_args, **build_kv_args):
     return gears
 
 
-def add_gear(self, gear_, *build_args, **build_kv_args):
+def addGear(self, gear_, *build_args, **build_kv_args):
     '''Same as Workplane.gear(...), but combines the resulting gear(s) with
        the other existing solids on the stack (if any). 
     '''    
@@ -61,4 +64,4 @@ def add_gear(self, gear_, *build_args, **build_kv_args):
 
 # Patch the functions into the Workplane
 cq.Workplane.gear = gear
-cq.Workplane.add_gear = add_gear
+cq.Workplane.addGear = addGear
