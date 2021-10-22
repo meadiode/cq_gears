@@ -19,7 +19,7 @@ limitations under the License.
 
 from setuptools import setup, find_packages
 
-version = '0.5'
+version = '0.51'
 
 setup(
     name='cq_gears',

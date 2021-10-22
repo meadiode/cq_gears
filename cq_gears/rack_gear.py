@@ -158,7 +158,7 @@ class RackGear(GearBase):
             for tf in t_faces:
                 face = tf.translate((np.pi * self.m * i, 0.0, 0.0))
                 
-                if i <= extra:
+                if i <= extra + 1:
                     cpd = face.split(lt_cut_plane)
                     
                     if isinstance(cpd, cq.Compound):
@@ -250,3 +250,18 @@ class RackGear(GearBase):
         body = cq.Solid.makeSolid(shell)
 
         return body
+
+
+class HerringboneRackGear(RackGear):
+    
+    def _build_tooth_faces(self, helix_angle, x_pos, z_pos, width):
+        tx = np.tan(helix_angle) * (width / 2.0)
+
+        t_faces1 = (super(HerringboneRackGear, self)
+                    ._build_tooth_faces(helix_angle, 0.0, 0.0, width / 2.0))
+
+        t_faces2 = (super(HerringboneRackGear, self)
+                    ._build_tooth_faces(-helix_angle, tx,
+                                        width / 2.0, width / 2.0))
+
+        return t_faces1 + t_faces2

@@ -5,7 +5,7 @@ Work in progress...
 
 Might be unstable, but somewhat usable.
 
-## v0.45 
+## v0.51
 Can generate the following types of gears:
 - Spur gear
 - Helical gear
@@ -13,6 +13,7 @@ Can generate the following types of gears:
 - Ring gear (helical/herringbone versions too)
 - Planetary gearsets
 - Straight and helical bevel gears
+- Gear rack
 
 ## Installation
 Assuming you already have **CadQuery** environment installed (if not, please follow instructions [here](https://github.com/CadQuery/cadquery/blob/master/README.md) first).
@@ -56,7 +57,7 @@ The result should look like this:
 
 Note that instantiating **SpurGear** (or any other class from **cq_gears**) will not create a solid body right away. Creating object just pre-calculates some important parameters and curves that later will be used during build phase.
 
-To actually build the solid object, you shall pass the created gear object to the **gear** or **add_gear** functions from cq.Workplane
+To actually build the solid object, you shall pass the created gear object to the **gear** or **addGear** functions from cq.Workplane
 
 Another example:
 ```python
@@ -72,7 +73,7 @@ wp = (cq.Workplane('XY')
       .moveTo(spur_gear.r0 * 2 * 4, 0.0)
         # Create an additional gear with the same profile but with different
         # bore diameter and hub
-      .add_gear(spur_gear, bore_d=3.0, hub_d=8.0, hub_length=4.0))
+      .addGear(spur_gear, bore_d=3.0, hub_d=8.0, hub_length=4.0))
       
 show(wp)
 ```
@@ -92,7 +93,7 @@ Check out other examples from the examples directory:
 
 ![ex3](images/planetary02.png)
 
-For research/educational purposes there is also a couple of noutbooks that use matplotlib to plot various gear profiles:
+For research/educational purposes there is also a couple of notebooks that use matplotlib to plot various gear profiles:
 
 ![ex1](images/pressure_angle_plot.png)
 
