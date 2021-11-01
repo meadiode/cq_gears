@@ -22,6 +22,17 @@ import numpy as np
 import cadquery as cq
 
 from OCP.BRepBuilderAPI import BRepBuilderAPI_Sewing
+from OCP.GeomAPI import GeomAPI_IntSS
+from OCP.BRepAdaptor import BRepAdaptor_Surface
+from OCP.BRepBuilderAPI import (BRepBuilderAPI_MakeWire,
+                                BRepBuilderAPI_MakeEdge,
+                                BRepBuilderAPI_MakeFace)
+from OCP.TopTools import TopTools_HSequenceOfShape, TopTools_ListOfShape
+from OCP.ShapeAnalysis import ShapeAnalysis_FreeBounds
+from OCP.ShapeFix import ShapeFix_Face
+from OCP.TopoDS import TopoDS
+from OCP.BRepCheck import BRepCheck_Analyzer
+
 
 #
 # Math utility functions
@@ -144,3 +155,63 @@ def make_shell(faces, tol=1e-2):
     s = shell_builder.SewedShape()
 
     return cq.Shell(s)
+
+
+def make_cross_section_face(faces, cut_plane, int_tol=1e-7, wire_con_tol=1e-3):
+    ss = GeomAPI_IntSS()
+    cps = BRepAdaptor_Surface(cut_plane.wrapped).Surface().Surface()
+
+    curves = []
+
+    for f in faces:
+        gfs = BRepAdaptor_Surface(f.wrapped).Surface().Surface()
+        ss.Perform(cps, gfs, int_tol)
+
+        if ss.NbLines():
+            for i in range(ss.NbLines()):
+                curves.append(ss.Line(i + 1))
+
+    edges = []
+
+    for curve in curves:
+        eb = BRepBuilderAPI_MakeEdge(curve)
+        edges.append(eb.Edge())
+
+
+    wb = BRepBuilderAPI_MakeWire()
+    elist = TopTools_ListOfShape()
+
+    for edge in edges:
+        elist.Append(edge)
+    
+    wb.Add(elist)
+    
+    if not wb.IsDone():
+        edges_in = TopTools_HSequenceOfShape()
+        wires_out = TopTools_HSequenceOfShape()
+
+        for edge in edges:
+            edges_in.Append(edge)
+
+        ShapeAnalysis_FreeBounds.ConnectEdgesToWires_s(edges_in, wire_con_tol,
+                                                       False, wires_out)
+
+        wire = TopoDS.Wire_s(wires_out.First())
+    else:
+        wire = wb.Wire()
+
+    fb = BRepBuilderAPI_MakeFace(wire, True)
+    face = fb.Face()
+
+    if not cq.Face(face).isValid():
+        # Erroneous face construction could be traced/analyzed here
+        # an = BRepCheck_Analyzer(face)
+        # anres = an.Result(face).Status().First()        
+        
+        fix = ShapeFix_Face(face)
+        fix.FixOrientation()
+        fix.Perform()
+
+        face = fix.Face()
+
+    return cq.Face(face)

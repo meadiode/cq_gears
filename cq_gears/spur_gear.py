@@ -34,8 +34,9 @@ class GearBase:
     wire_comb_tol = 1e-2 # Wire combining tolerance
     spline_approx_tol = 1e-2 # Surface spline approximation tolerance
     shell_sewing_tol = 1e-2 # Tolerance to assembly a shell out of faces
-    spline_approx_min_deg = 1 # Minimum surface spline degree
-    spline_approx_max_deg = 6 # Maximum surface spline degree
+    isection_tol = 1e-7 # Tolerance to find intersections between two surfaces
+    spline_approx_min_deg = 3 # Minimum surface spline degree
+    spline_approx_max_deg = 8 # Maximum surface spline degree
 
     
     def __init__(self, *args, **kv_args):
