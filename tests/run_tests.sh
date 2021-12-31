@@ -4,9 +4,11 @@
 
 NUM_TEST_CASES=1000
 
+REPORT_DIR="./reports"
 TS=$(date +%Y%m%d%H%M%S)
 HASH=$(git rev-parse --short HEAD)
 BRANCH=$(git rev-parse --abbrev-ref HEAD)
-REPORT_NAME="./report_${BRANCH}_${HASH}_${TS}.json"
+REPORT_NAME="${REPORT_DIR}/report_${BRANCH}_${HASH}_${TS}.json"
 
-pytest --num_test_cases=$NUM_TEST_CASES --json-report --json-report-file=$REPORT_NAME
+mkdir -p $REPORT_DIR
+pytest --num_test_cases=$NUM_TEST_CASES --workers auto --json-report --json-report-file=$REPORT_NAME

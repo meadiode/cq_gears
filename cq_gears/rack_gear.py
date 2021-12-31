@@ -40,8 +40,8 @@ class RackGear(GearBase):
         self.height = height
         self.build_params = build_params
 
-        adn = self.ka / (1.0 / m) # addendum
-        ddn = self.kd / (1.0 / m) # dedendum
+        adn = self.ka * m # addendum
+        ddn = self.kd * m # dedendum
         
         self.la = la = adn # addendum line
         self.ld = ld = -(ddn + clearance) # dedendum line
@@ -189,8 +189,8 @@ class RackGear(GearBase):
                     .edges('<X')
                     .toPending()
                     .moveTo(pt1.Y, pt1.Z)
-                    .lineTo(-self.ld - self.height, pt1.Z)
-                    .lineTo(-self.ld - self.height, pt2.Z)
+                    .lineTo(self.ld - self.height, pt1.Z)
+                    .lineTo(self.ld - self.height, pt2.Z)
                     .lineTo(pt2.Y, pt2.Z)
                     .consolidateWires()).vals()
 
@@ -205,8 +205,8 @@ class RackGear(GearBase):
                     .edges('>X')
                     .toPending()
                     .moveTo(pt1.Y, pt1.Z)
-                    .lineTo(-self.ld - self.height, pt1.Z)
-                    .lineTo(-self.ld - self.height, pt2.Z)
+                    .lineTo(self.ld - self.height, pt1.Z)
+                    .lineTo(self.ld - self.height, pt2.Z)
                     .lineTo(pt2.Y, pt2.Z)
                     .consolidateWires()).vals()
 
@@ -215,7 +215,7 @@ class RackGear(GearBase):
 
         # Build back face
         bk_wires = (cq.Workplane('XZ',
-                                 origin=(0.0, -self.ld - self.height, 0.0))
+                                 origin=(0.0, self.ld - self.height, 0.0))
                     .rect(self.length, self.width, centered=False)).vals()
 
         bk_face = cq.Face.makeFromWires(bk_wires[0])
