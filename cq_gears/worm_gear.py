@@ -25,7 +25,7 @@ from .utils import rotation_matrix, make_shell, make_cross_section_face
 from .spur_gear import GearBase
 
 
-class WormGear(GearBase):
+class Worm(GearBase):
 
     surface_splines = 8 # Number of curve splines to approximate a surface
     wire_comb_tol = 0.1 # Wire combining tolerance    
@@ -47,8 +47,8 @@ class WormGear(GearBase):
         d0 = self.n_threads * m / np.abs(np.tan(self.lead_angle))
         self.r0 = d0 / 2.0 # Pitch radius
         
-        adn = self.ka / (1.0 / m) # Addendum
-        ddn = self.kd / (1.0 / m) # Dedendum
+        adn = self.ka * m # Addendum
+        ddn = self.kd * m # Dedendum
         
         self.la = la = adn # Addendum line
         self.ld = ld = -(ddn + clearance) # Dedendum line
@@ -102,7 +102,7 @@ class WormGear(GearBase):
         ttx = self.m * np.pi * self.n_threads
         start_x = -ttx / 2.0
         step_x = ttx / self.t_face_parts
-        part_turn = np.pi * 2.0 / self.t_face_parts
+        part_turn = np.pi * 2.0 / self.t_face_parts * np.sign(self.lead_angle)
 
         spline_tf = np.linspace((start_x, 0.0),
                                 (start_x + step_x, part_turn),
