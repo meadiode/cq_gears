@@ -25,7 +25,7 @@ from .utils import rotation_matrix, make_shell, make_cross_section_face
 from .spur_gear import GearBase
 
 
-class WormGear(GearBase):
+class Worm(GearBase):
 
     surface_splines = 8 # Number of curve splines to approximate a surface
     wire_comb_tol = 0.1 # Wire combining tolerance    

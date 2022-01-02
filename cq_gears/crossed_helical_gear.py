@@ -192,3 +192,105 @@ class CrossedGearPair(GearBase):
 
         return cq.Compound.makeCompound(gearset)
 
+
+class HyperbolicGear(SpurGear):
+    surface_splines = 2
+    
+    def __init__(self, module, teeth_number, width, twist_angle,
+                 pressure_angle=20.0, clearance=0.0,
+                 backlash=0.0, **build_params):
+        
+        super(HyperbolicGear, self).__init__(module=module,
+                                             teeth_number=teeth_number,
+                                             width=width,
+                                             pressure_angle=pressure_angle,
+                                             helix_angle=0.0,
+                                             clearance=clearance,
+                                             backlash=backlash,
+                                             **build_params)
+        self.twist_angle = np.radians(twist_angle)
+        
+        ln = np.cos(self.twist_angle) * self.r0
+        ht = np.sin(self.twist_angle) * self.r0
+        rpx = (self.r0 + ln) / 2.0
+        rpy = ht / 2.0
+        self.throat_r = np.sqrt(rpx ** 2 + rpy ** 2)
+
+
+class HyperbolicGearPair(GearBase):
+
+    gear_cls = HyperbolicGear
+    
+    def __init__(self, module, gear1_teeth_number, width, shaft_angle,
+                 gear2_teeth_number=None, pressure_angle=20.0,
+                 clearance=0.0, backlash=0.0, **build_params):
+        
+        if gear2_teeth_number is None:
+            gear2_teeth_number = gear1_teeth_number
+        
+        g1_r0 = module * gear1_teeth_number / 2.0
+        g2_r0 = module * gear2_teeth_number / 2.0
+        
+        alpha = np.radians(shaft_angle / 2.0)
+        hh = (width / 2.0) * np.tan(alpha)
+        
+        gear1_twist_angle = np.arcsin(hh / g1_r0) * 2.0
+        gear2_twist_angle = np.arcsin(hh / g2_r0) * 2.0
+        
+        if np.isnan(gear1_twist_angle) or np.isnan(gear2_twist_angle):
+            raise ValueError('Impossible to calculate a twist angle for the '
+                             'given shaft angle/teeth number/gear width')
+        
+        self.shaft_angle = np.radians(shaft_angle)
+                    
+        self.gear1 = self.gear_cls(module, gear1_teeth_number, width,
+                                   twist_angle=np.degrees(gear1_twist_angle),
+                                   pressure_angle=pressure_angle,
+                                   clearance=clearance,
+                                   backlash=backlash)
+        
+        self.gear2 = self.gear_cls(module, gear2_teeth_number, width,
+                                   twist_angle=np.degrees(gear2_twist_angle),
+                                   pressure_angle=pressure_angle,
+                                   clearance=clearance,
+                                   backlash=backlash)
+        self.build_params = build_params
+        
+        
+    def _build(self, build_gear1=True, build_gear2=True, transform_gear2=True,
+               gear1_build_args={}, gear2_build_args={}, **kv_args):
+        
+        gearset = cq.Workplane('XY')
+        
+        if build_gear1:
+            args = {**self.build_params, **kv_args, **gear1_build_args}
+            gear1 = self.gear1.build(**args)
+            gearset = gearset.add(gear1)
+            
+        if build_gear2:
+            args = {**self.build_params, **kv_args, **gear2_build_args}
+            gear2 = self.gear2.build(**args)
+
+            if transform_gear2:
+
+                ratio = self.gear1.z / self.gear2.z
+                align_angle = 0.0 if self.gear2.z % 2 else 180.0 / self.gear2.z
+                align_angle += np.degrees(self.gear2.twist_angle + \
+                                          self.gear1.twist_angle * ratio) / 2.0
+
+                gear2 = (gear2
+                         .rotate((0.0, 0.0, 0.0), (0.0, 0.0, 1.0), align_angle)               
+                         .rotate((0.0, 0.0, self.gear1.width / 2.0),
+                                 (1.0, 0.0, self.gear1.width / 2.0),
+                                 np.degrees(self.shaft_angle))
+                         .translate((self.gear1.throat_r + self.gear2.throat_r,
+                                     0.0, 0.0)))
+
+            gearset = gearset.add(gear2)
+            
+        gearset = gearset.vals()
+            
+        if len(gearset) == 1:
+            return gearset[0]
+
+        return cq.Compound.makeCompound(gearset)
