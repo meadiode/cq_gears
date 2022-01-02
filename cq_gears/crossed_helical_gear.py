@@ -152,18 +152,18 @@ class CrossedGearPair(GearBase):
         self.build_params = build_params
         
         
-    def _build(self, gear1=True, gear2=True, transform_gear2=True,
+    def _build(self, build_gear1=True, build_gear2=True, transform_gear2=True,
                gear1_build_args={}, gear2_build_args={}, **kv_args):
         
         gearset = cq.Workplane('XY')
         
-        if gear1:
+        if build_gear1:
             args = {**self.build_params, **kv_args, **gear1_build_args}
             gear1 = self.gear1.build(**args)
 
             gearset = gearset.add(gear1)
             
-        if gear2:
+        if build_gear2:
             args = {**self.build_params, **kv_args, **gear2_build_args}
             gear2 = self.gear2.build(**args)
 

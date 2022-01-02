@@ -1,7 +1,7 @@
 
 import numpy as np
 import cadquery as cq
-from cq_gears import WormGear
+from cq_gears import Worm
 
 from utils import (BuildFailure, SolidBuildFailure, VolumeCheckFailure,
                    BBoxZCheckFailure, BBoxXYCheckFailure)
@@ -26,9 +26,9 @@ PRESSURE_ANGLE_MAX = 30.0
 BBOX_CHECK_TOL = 0.5
 
 
-class TestWormGear(_TestGear):
+class TestWorm(_TestGear):
 
-    gear_cls = WormGear
+    gear_cls = Worm
     argnames = ['module', 'lead_angle', 'n_threads', 'length', 'pressure_angle']
 
     @staticmethod
@@ -38,7 +38,7 @@ class TestWormGear(_TestGear):
         module = MODULE_MIN + (MODULE_MAX - MODULE_MIN) * rng.random(n)
         n_threads = rng.integers(THREADS_MIN, THREADS_MAX + 1, n)
         lead_angle_max = (n_threads * module) / \
-                         (2.0 * WormGear.kd * module + 2.0 * ROOT_RADIUS_MIN)
+                         (2.0 * Worm.kd * module + 2.0 * ROOT_RADIUS_MIN)
         lead_angle = LEAD_ANGLE_MIN + \
                         (lead_angle_max - LEAD_ANGLE_MIN) * rng.random(n)
         length = LENGTH_MIN + (LENGTH_MAX - LENGTH_MIN) * rng.random(n)
@@ -49,7 +49,7 @@ class TestWormGear(_TestGear):
 
         for vals in zip(module, lead_angle, n_threads, length, pressure_angle):
             params.append({k : v.item() for k, v in \
-                            zip(TestWormGear.argnames, vals)})
+                            zip(TestWorm.argnames, vals)})
 
         return params
 

@@ -369,15 +369,68 @@ class SpurGear(GearBase):
         return body.val()
 
 
-    def _build(self, bore_d=None, missing_teeth=None,
-               hub_d=None, hub_length=None, recess_d=None, recess=None,
-               n_spokes=None, spoke_width=None, spoke_fillet=None,
-               spokes_id=None, spokes_od=None):
+def _make_chamfer(self, body, chamfer=None, chamfer_top=None,
+                  chamfer_bottom=None):    
+    E = 0.001
+    
+    if chamfer is None and chamfer_top is None and chamfer_bottom is None:
+        return body
+    
+    if chamfer is not None:
+        if chamfer_top is None:
+            chamfer_top = chamfer
+        if chamfer_bottom is None:
+            chamfer_bottom = chamfer
+            
+    if chamfer_top is not None:
+        if isinstance(chamfer_top, (list, tuple)):
+            wx, wy = chamfer_top
+        else:
+            wx, wy = chamfer_top, chamfer_top
+            
+        cutter = (cq.Workplane('XZ')
+                  .moveTo(self.ra - wx, self.width + E)
+                  .hLine(wx + E)
+                  .vLine(-wy - E)
+                  .close()
+                  .revolve())
+
+        body = (cq.Workplane('XY')
+                .add(body)
+                .cut(cutter))
+        
+    if chamfer_bottom is not None:
+        if isinstance(chamfer_bottom, (list, tuple)):
+            wx, wy = chamfer_bottom
+        else:
+            wx, wy = chamfer_bottom, chamfer_bottom
+            
+        cutter = (cq.Workplane('XZ')
+                  .moveTo(self.ra + E, wy)
+                  .vLine(-wy - E)
+                  .hLine(-wx - E)
+                  .close()
+                  .revolve())
+
+        body = (cq.Workplane('XY')
+                .add(body)
+                .cut(cutter))
+        
+        
+    return body.val()
+
+
+def _build(self, bore_d=None, missing_teeth=None,
+           hub_d=None, hub_length=None, recess_d=None, recess=None,
+           n_spokes=None, spoke_width=None, spoke_fillet=None,
+           spokes_id=None, spokes_od=None, chamfer=None, chamfer_top=None,
+           chamfer_bottom=None):
         faces = self._build_gear_faces()
 
         shell = make_shell(faces, tol=self.shell_sewing_tol)
         body = cq.Solid.makeSolid(shell)
 
+        body = self._make_chamfer(body, chamfer, chamfer_top, chamfer_bottom)
         body = self._make_bore(body, bore_d)
         body = self._make_missing_teeth(body, missing_teeth)
         body = self._make_recess(body, hub_d, recess_d, recess)
