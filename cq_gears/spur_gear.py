@@ -424,7 +424,7 @@ class SpurGear(GearBase):
                hub_d=None, hub_length=None, recess_d=None, recess=None,
                n_spokes=None, spoke_width=None, spoke_fillet=None,
                spokes_id=None, spokes_od=None, chamfer=None, chamfer_top=None,
-               chamfer_bottom=None):
+               chamfer_bottom=None, *args, **kv_args):
             faces = self._build_gear_faces()
 
             shell = make_shell(faces, tol=self.shell_sewing_tol)

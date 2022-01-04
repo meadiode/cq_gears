@@ -168,7 +168,7 @@ class RingGear(SpurGear):
         return wp.vals()
 
 
-    def _build(self):
+    def _build(self, *args, **kv_args):
         faces = self._build_gear_faces()
 
         shell = make_shell(faces)
@@ -194,6 +194,10 @@ class PlanetaryGearset(GearBase):
 
     gear_cls = SpurGear
     ring_gear_cls = RingGear
+
+    asm_sun_color = 'gold'
+    asm_planet_color = 'lightsteelblue'
+    asm_ring_color = 'goldenrod'
 
     def __init__(self, module, sun_teeth_number, planet_teeth_number, width,
                  rim_width, n_planets, pressure_angle=20.0,
@@ -232,56 +236,88 @@ class PlanetaryGearset(GearBase):
         self.build_params = build_params
 
 
-    def _build(self, sun=True, planets=True, ring=True,
-               sun_build_args={}, planet_build_args={}, **kv_args):
+    def _build(self, *args, **kv_args):
+        asm = self.assemble(*args, **kv_args)
+        return asm.toCompound()
 
-        gearset = cq.Workplane('XY')
 
-        if sun:
-            args = {**kv_args, **sun_build_args}
+    def assemble(self, build_sun=True, build_planets=True, build_ring=True,
+                 sun_build_args={}, planet_build_args={},
+                 ring_build_args={}, **kv_args):
+
+        gearset = cq.Assembly(name='planetary')
+
+        if build_sun:
+            if 'sun_build_args' in self.build_params:
+                in_args = self.build_params['sun_build_args']
+            else:
+                in_args = {}
+
+            args = {**self.build_params,
+                    **in_args,
+                    **kv_args,
+                    **sun_build_args}
+
             sun = self.sun.build(**args)
-
+            
             if (self.planet.z % 2) != 0:
-                sun = sun.rotate((0.0, 0.0, 0.0), (0.0, 0.0, 1.0),
-                                   np.degrees(self.sun.tau / 2.0))
-            gearset.add(sun)
+                loc = cq.Location(cq.Vector(0.0, 0.0, 0.0),
+                                  cq.Vector(0.0, 0.0, 1.0),
+                                  np.degrees(self.sun.tau / 2.0))
+            else:
+                loc = cq.Location()
+            
+            gearset.add(sun, name='sun', loc=loc,
+                        color=cq.Color(self.asm_sun_color))
 
 
-        if planets and self.n_planets > 0:
+        if build_planets and self.n_planets > 0:
             planet_a = np.pi * 2.0 / self.n_planets
 
-            if isinstance(planets, (list, tuple)):
-                tobuild = planets
+            if isinstance(build_planets, (list, tuple)):
+                tobuild = build_planets
             else:
                 tobuild = [True, ] * self.n_planets
-            args = {**kv_args, **planet_build_args}
+
+            if 'planet_build_args' in self.build_params:
+                in_args = self.build_params['planet_build_args']
+            else:
+                in_args = {}
+
+            args = {**self.build_params,
+                    **in_args,
+                    **kv_args,
+                    **planet_build_args}
 
             planet_body = self.planet.build(**args)
+
+            planets = cq.Assembly(name='planets')
             
-            for i in range(self.n_planets):
-                if not tobuild[i]:
+            for i, bld in enumerate(tobuild):
+                if not bld:
                     continue
 
-                planet = (planet_body
-                          .rotate((0.0, 0.0, 0.0), (0.0, 0.0, 1.0),
+                loc = cq.Location(cq.Vector(np.cos(i * planet_a) * self.orbit_r,
+                                            np.sin(i * planet_a) * self.orbit_r,
+                                            0.0),
+                                  cq.Vector(0.0, 0.0, 1.0),
                                   np.degrees(self.planet.tau / 2.0))
-                          .translate((np.cos(i * planet_a) * self.orbit_r,
-                                      np.sin(i * planet_a) * self.orbit_r,
-                                      0.0)))
-                gearset.add(planet)
+                
+                planets.add(planet_body, name=f'planet_{i:02}', loc=loc,
+                            color=cq.Color(self.asm_planet_color))
+            gearset.add(planets)
 
-        if ring:
-            ring = (self.ring.build()
-                    .rotate((0.0, 0.0, 0.0), (0.0, 0.0, 1.0),
-                            np.degrees(self.ring.tau / 2.0)))
-            gearset.add(ring)
-
-        gearset = gearset.vals()
-        
-        if len(gearset) == 1:
-            return gearset[0]
-
-        return cq.Compound.makeCompound(gearset)
+        if build_ring:
+            args = ring_build_args
+            
+            ring = self.ring.build(**args)
+            loc = cq.Location(cq.Vector(0.0, 0.0, 0.0),
+                              cq.Vector(0.0, 0.0, 1.0),
+                              np.degrees(self.ring.tau / 2.0))
+            gearset.add(ring, name='ring', loc=loc,
+                        color=cq.Color(self.asm_ring_color))
+            
+        return gearset
 
 
 class HerringbonePlanetaryGearset(PlanetaryGearset):
