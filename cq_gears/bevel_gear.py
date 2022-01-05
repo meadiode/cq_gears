@@ -299,7 +299,7 @@ class BevelGear(GearBase):
         return body.val()
 
 
-    def _build(self, bore_d=None, trim_bottom=True, trim_top=True):
+    def _build(self, bore_d=None, trim_bottom=True, trim_top=True, **kv_args):
         faces = self._build_gear_faces()
 
         shell = make_shell(faces)
@@ -326,6 +326,9 @@ class BevelGear(GearBase):
 class BevelGearPair(GearBase):
 
     gear_cls = BevelGear
+
+    asm_gear_color = 'goldenrod'
+    asm_pinion_color = 'lightsteelblue'
     
     def __init__(self, module, gear_teeth, pinion_teeth, face_width,
                  axis_angle=90.0, pressure_angle=20.0, helix_angle=0.0,
@@ -352,44 +355,60 @@ class BevelGearPair(GearBase):
         self.build_params = build_params
 
 
-    def _build(self, gear=True, pinion=True, transform_pinion=True,
-               gear_build_args={}, pinion_build_args={}, **kv_args):
+    def assemble(self, build_gear=True, build_pinion=True,
+                 transform_pinion=True, gear_build_args={},
+                 pinion_build_args={}, **kv_args):
 
-        gearset = cq.Workplane('XY')
+        gearset = cq.Assembly(name='bevel_pair')
 
-        if gear:
-            args = {**kv_args, **gear_build_args}
+        if build_gear:
+            if 'gear_build_args' in self.build_params:
+                in_args = self.build_params['gear_build_args']
+            else:
+                in_args = {}
+
+            args = {**self.build_params,
+                    **in_args,
+                    **kv_args,
+                    **gear_build_args}
+
             gear = self.gear.build(**args)
+            gearset.add(gear, name='gear', loc=cq.Location(),
+                        color=cq.Color(self.asm_gear_color))
 
-            gearset.add(gear)
+        if build_pinion:
+            if 'pinion_build_args' in self.build_params:
+                in_args = self.build_params['pinion_build_args']
+            else:
+                in_args = {}
 
-        if pinion:
-            args = {**kv_args, **pinion_build_args}
+            args = {**self.build_params,
+                    **in_args,
+                    **kv_args,
+                    **pinion_build_args}
+
             pinion = self.pinion.build(**args)
 
+            loc = cq.Location()
+
             if transform_pinion:
-                dist = -self.pinion.cone_h + self.gear.cone_h
-                angle = np.pi / 2.0 - self.axis_angle
-
-                if self.pinion.z % 2 == 0:
-                    pinion = pinion.rotate(
-                                    (0.0, 0.0, 0.0),
-                                    (0.0, 0.0, 1.0),
-                                    np.degrees(np.pi / self.pinion.z))
-
-                pinion = (pinion
-                          .rotate((0.0, -1.0, self.gear.cone_h),
-                                  (0.0, 1.0, self.gear.cone_h),
+                loc *= cq.Location(cq.Vector(0.0, 0.0, self.gear.cone_h),
+                                   cq.Vector(0.0, 1.0, 0.0),
                                    np.degrees(self.axis_angle))
-                          .translate((dist * np.cos(angle),
-                                      0.0,
-                                      dist * np.sin(angle))))
+                
+                loc *= cq.Location(cq.Vector((0.0, 0.0, -self.pinion.cone_h)))
+                
+                if self.pinion.z % 2 == 0:
+                    loc *= cq.Location(cq.Vector(0.0, 0.0, 0.0),
+                                       cq.Vector(0.0, 0.0, 1.0),
+                                       np.degrees(np.pi / self.pinion.z))
+                
+            gearset.add(pinion, name='pinion', loc=loc,
+                        color=cq.Color(self.asm_pinion_color))
 
-            gearset.add(pinion)
+        return gearset
 
-        gearset = gearset.vals()
-        
-        if len(gearset) == 1:
-            return gearset[0]
 
-        return cq.Compound.makeCompound(gearset)
+    def _build(self, *args, **kv_args):
+        asm = self.assemble(*args, **kv_args)
+        return asm.toCompound()
