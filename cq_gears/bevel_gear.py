@@ -164,9 +164,12 @@ class BevelGear(GearBase):
         ta1 = -(pc_f - self.gs_r) / self.face_width * self.twist_angle
         ta2 = (self.gs_r - tc_f) / self.face_width * self.twist_angle
 
+        surf_splines = int(np.ceil(abs(self.twist_angle) / (np.pi * 2.0)))
+        surf_splines *= self.surface_splines
+
         # Transformation parameters: (radius, twist angle)
         spline_tf = np.linspace((pc_f, ta1), (tc_f - 0.01, ta2),
-                                self.surface_splines)
+                                surf_splines)
 
         tcp_size = tc_rb * 1000.0
         top_cut_plane = cq.Face.makePlane(length=tcp_size, width=tcp_size,

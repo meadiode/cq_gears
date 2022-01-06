@@ -29,7 +29,7 @@ class GearBase:
     kd = 1.25 # Dedendum coefficient
 
     curve_points = 20 # Number of points to approximate a curve
-    surface_splines = 5 # Number of curve splines to approximate a surface
+    surface_splines = 12 # Number of curve splines to approximate a surface
     
     wire_comb_tol = 1e-2 # Wire combining tolerance
     spline_approx_tol = 1e-2 # Surface spline approximation tolerance
@@ -161,11 +161,13 @@ class SpurGear(GearBase):
 
     
     def _build_tooth_faces(self, twist_angle_a, twist_angle_b, z_pos, width):
-        
+        surf_splines = int(np.ceil(abs(self.twist_angle) / (np.pi * 2.0)))
+        surf_splines *= self.surface_splines
+
         # Spline transformation parameters: (angle around z-axis, z-pos)
         spline_tf = np.linspace((twist_angle_a, z_pos),
                                 (twist_angle_b, z_pos + width),
-                                self.surface_splines)
+                                surf_splines)
         t_faces = []
 
         for spline in (self.t_lflank_pts, self.t_tip_pts,

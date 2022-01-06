@@ -15,7 +15,7 @@ TEETH_NUMBER_MIN = 3
 TEETH_NUMBER_MAX = 200
 
 CONE_ANGLE_MIN = 1.0
-CONE_ANGLE_MAX = 89.0
+CONE_ANGLE_MAX = 80.0
 
 PRESSURE_ANGLE_MIN = 0.5
 PRESSURE_ANGLE_MAX = 30.0
@@ -23,7 +23,7 @@ PRESSURE_ANGLE_MAX = 30.0
 HELIX_ANGLE_MIN = -70.0
 HELIX_ANGLE_MAX = 70.0
 
-BBOX_CHECK_TOL = 0.5
+BBOX_CHECK_TOL = 1.5
 
 
 class TestBevelGear(_TestGear):
@@ -103,7 +103,7 @@ class TestBevelGear(_TestGear):
         width = gear.cone_h - \
                 np.cos(gear.gamma_f) * (gear.gs_r - gear.face_width)
 
-        if abs(width - (bb.zmax + bb.zmin)) > BBOX_CHECK_TOL:
+        if abs(width - (bb.zmax - bb.zmin)) > BBOX_CHECK_TOL:
             out_q.put(BBoxZCheckFailure())
             return
 
