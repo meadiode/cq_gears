@@ -29,6 +29,8 @@ from .spur_gear import GearBase
 
 class BevelGear(GearBase):
 
+    surface_splines = 12
+
     def __init__(self, module, teeth_number, cone_angle, face_width,
                  pressure_angle=20.0, helix_angle=0.0, clearance=0.0,
                  backlash=0.0, **build_params):
@@ -69,6 +71,8 @@ class BevelGear(GearBase):
         else:
             self.surface_splines = 2
             self.twist_angle = 0.0
+
+        assert np.isnan(self.twist_angle) == False, 'Twist angle is NaN'
 
         self.build_params = build_params
 

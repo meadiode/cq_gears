@@ -29,7 +29,7 @@ class GearBase:
     kd = 1.25 # Dedendum coefficient
 
     curve_points = 20 # Number of points to approximate a curve
-    surface_splines = 12 # Number of curve splines to approximate a surface
+    surface_splines = 5 # Number of curve splines to approximate a surface
     
     wire_comb_tol = 1e-2 # Wire combining tolerance
     spline_approx_tol = 1e-2 # Surface spline approximation tolerance
