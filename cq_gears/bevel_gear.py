@@ -169,7 +169,7 @@ class BevelGear(GearBase):
         ta2 = (self.gs_r - tc_f) / self.face_width * self.twist_angle
 
         surf_splines = int(np.ceil(abs(self.twist_angle) / (np.pi * 2.0)))
-        surf_splines *= self.surface_splines
+        surf_splines = max(1, surf_splines) * self.surface_splines
 
         # Transformation parameters: (radius, twist angle)
         spline_tf = np.linspace((pc_f, ta1), (tc_f - 0.01, ta2),

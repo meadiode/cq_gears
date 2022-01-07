@@ -162,7 +162,7 @@ class SpurGear(GearBase):
     
     def _build_tooth_faces(self, twist_angle_a, twist_angle_b, z_pos, width):
         surf_splines = int(np.ceil(abs(self.twist_angle) / (np.pi * 2.0)))
-        surf_splines *= self.surface_splines
+        surf_splines = max(1, surf_splines) * self.surface_splines
 
         # Spline transformation parameters: (angle around z-axis, z-pos)
         spline_tf = np.linspace((twist_angle_a, z_pos),
