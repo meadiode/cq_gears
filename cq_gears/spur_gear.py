@@ -373,7 +373,7 @@ class SpurGear(GearBase):
 
     def _make_chamfer(self, body, chamfer=None, chamfer_top=None,
                       chamfer_bottom=None):    
-        E = 0.001
+        E = 0.01
         
         if chamfer is None and chamfer_top is None and chamfer_bottom is None:
             return body
