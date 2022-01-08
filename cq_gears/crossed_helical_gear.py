@@ -123,6 +123,8 @@ class CrossedGearPair(GearBase):
 
     gear1_cls = CrossedHelicalGear
     gear2_cls = CrossedHelicalGear
+    asm_gear1_color = 'goldenrod'
+    asm_gear2_color = 'lightsteelblue'
     
     def __init__(self, module, gear1_teeth_number, gear2_teeth_number,
                  gear1_width, gear2_width, pressure_angle=20.0,
@@ -148,52 +150,59 @@ class CrossedGearPair(GearBase):
                                     helix_angle=g2_helix,
                                     clearance=clearance,
                                     backlash=backlash)
-        self.shaft_angle = shaft_angle
+        self.shaft_angle = np.radians(shaft_angle)
         self.build_params = build_params
+
+
+    def assemble(self, build_gear1=True, build_gear2=True, transform_gear2=True,
+                 gear1_build_args={}, gear2_build_args={}, **kv_args):
         
-        
-    def _build(self, gear1=True, gear2=True, transform_gear2=True,
-               gear1_build_args={}, gear2_build_args={}, **kv_args):
-        
-        gearset = cq.Workplane('XY')
-        
-        if gear1:
+        gearset = cq.Assembly(name='crossed_pair')
+
+        if build_gear1:
             args = {**self.build_params, **kv_args, **gear1_build_args}
             gear1 = self.gear1.build(**args)
 
-            gearset = gearset.add(gear1)
-            
-        if gear2:
+            gearset.add(gear1, name='gear1', loc=cq.Location(),
+                        color=cq.Color(self.asm_gear1_color))
+
+        if build_gear2:
             args = {**self.build_params, **kv_args, **gear2_build_args}
             gear2 = self.gear2.build(**args)
 
             if transform_gear2:
-
                 ratio = self.gear1.z / self.gear2.z
-                align_angle = 0.0 if self.gear2.z % 2 else 180.0 / self.gear2.z
+                align_angle = 0.0 if self.gear2.z % 2 else 180.0 / self.gear2.z            
                 align_angle += np.degrees(self.gear2.twist_angle + \
                                           self.gear1.twist_angle * ratio) / 2.0
-
-                gear2 = (gear2
-                         .rotate((0.0, 0.0, 0.0), (0.0, 0.0, 1.0), align_angle)
-                         .translate((0.0, 0.0, (self.gear1.width - \
-                                                self.gear2.width) / 2.0))
-                         .rotate((0.0, 0.0, self.gear1.width / 2.0),
-                                 (1.0, 0.0, self.gear1.width / 2.0),
-                                 self.shaft_angle)
-                         .translate((self.gear1.r0 + self.gear2.r0, 0.0, 0.0)))
-
-            gearset = gearset.add(gear2)
             
-        gearset = gearset.vals()
-            
-        if len(gearset) == 1:
-            return gearset[0]
+                loc = cq.Location(cq.Vector(self.gear1.r0 + self.gear2.r0,
+                                            0.0,
+                                            self.gear1.width / 2.0))            
+                loc *= cq.Location(cq.Vector(0.0, 0.0, 0.0),
+                                   cq.Vector(1.0, 0.0, 0.0),
+                                   np.degrees(self.shaft_angle))
+                loc *= cq.Location(cq.Vector(0.0, 0.0, -self.gear2.width / 2.0))
+                loc *= cq.Location(cq.Vector(0.0, 0.0, 0.0),
+                                   cq.Vector(0.0, 0.0, 1.0),
+                                   align_angle)
+                
+            else:
+                loc = cq.Loaction()
 
-        return cq.Compound.makeCompound(gearset)
+            gearset.add(gear2, name='gear2', loc=loc,
+                        color=cq.Color(self.asm_gear2_color))
+
+        return gearset
+        
+        
+    def _build(self, *args, **kv_args):
+        asm = self.assemble(*args, **kv_args)
+        return asm.toCompound()
 
 
 class HyperbolicGear(SpurGear):
+
     surface_splines = 2
     
     def __init__(self, module, teeth_number, width, twist_angle,
@@ -220,6 +229,8 @@ class HyperbolicGear(SpurGear):
 class HyperbolicGearPair(GearBase):
 
     gear_cls = HyperbolicGear
+    asm_gear1_color = 'goldenrod'
+    asm_gear2_color = 'lightsteelblue'
     
     def __init__(self, module, gear1_teeth_number, width, shaft_angle,
                  gear2_teeth_number=None, pressure_angle=20.0,
@@ -238,8 +249,8 @@ class HyperbolicGearPair(GearBase):
         gear2_twist_angle = np.arcsin(hh / g2_r0) * 2.0
         
         if np.isnan(gear1_twist_angle) or np.isnan(gear2_twist_angle):
-            raise ValueError('Impossible to calculate a twist angle for the '
-                             'given shaft angle/teeth number/gear width')
+            raise ValueError('Impossible to calculate the twist angle for the '
+                             'given shaft angle / teeth number / gear width')
         
         self.shaft_angle = np.radians(shaft_angle)
                     
@@ -256,17 +267,18 @@ class HyperbolicGearPair(GearBase):
                                    backlash=backlash)
         self.build_params = build_params
         
-        
-    def _build(self, build_gear1=True, build_gear2=True, transform_gear2=True,
-               gear1_build_args={}, gear2_build_args={}, **kv_args):
-        
-        gearset = cq.Workplane('XY')
-        
+
+    def assemble(self, build_gear1=True, build_gear2=True, transform_gear2=True,
+                 gear1_build_args={}, gear2_build_args={}, **kv_args):
+
+        gearset = cq.Assembly(name='hyperbolic_pair')
+
         if build_gear1:
             args = {**self.build_params, **kv_args, **gear1_build_args}
             gear1 = self.gear1.build(**args)
-            gearset = gearset.add(gear1)
-            
+            gearset.add(gear1, name='gear1', loc=cq.Location(),
+                        color=cq.Color(self.asm_gear1_color))
+
         if build_gear2:
             args = {**self.build_params, **kv_args, **gear2_build_args}
             gear2 = self.gear2.build(**args)
@@ -277,20 +289,27 @@ class HyperbolicGearPair(GearBase):
                 align_angle = 0.0 if self.gear2.z % 2 else 180.0 / self.gear2.z
                 align_angle += np.degrees(self.gear2.twist_angle + \
                                           self.gear1.twist_angle * ratio) / 2.0
+                
+                loc = cq.Location(cq.Vector(self.gear1.throat_r + \
+                                            self.gear2.throat_r,
+                                            0.0,
+                                            self.gear1.width / 2.0))
+                loc *= cq.Location(cq.Vector(0.0, 0.0, 0.0),
+                                   cq.Vector(1.0, 0.0, 0.0),
+                                   np.degrees(self.shaft_angle))
+                loc *= cq.Location(cq.Vector(0.0, 0.0, -self.gear2.width / 2.0))
+                loc *= cq.Location(cq.Vector(0.0, 0.0, 0.0),
+                                   cq.Vector(0.0, 0.0, 1.0),
+                                   align_angle)
+            else:
+                loc = cq.Location()
 
-                gear2 = (gear2
-                         .rotate((0.0, 0.0, 0.0), (0.0, 0.0, 1.0), align_angle)               
-                         .rotate((0.0, 0.0, self.gear1.width / 2.0),
-                                 (1.0, 0.0, self.gear1.width / 2.0),
-                                 np.degrees(self.shaft_angle))
-                         .translate((self.gear1.throat_r + self.gear2.throat_r,
-                                     0.0, 0.0)))
+            gearset.add(gear2, name='gear2', loc=loc,
+                        color=cq.Color(self.asm_gear2_color))
 
-            gearset = gearset.add(gear2)
-            
-        gearset = gearset.vals()
-            
-        if len(gearset) == 1:
-            return gearset[0]
+        return gearset
+        
 
-        return cq.Compound.makeCompound(gearset)
+    def _build(self, *args, **kv_args):
+        asm = self.assemble(*args, **kv_args)
+        return asm.toCompound()

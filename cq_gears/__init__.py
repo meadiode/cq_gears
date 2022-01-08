@@ -17,7 +17,7 @@ limitations under the License.
 '''
 
 
-__version__='0.6'
+__version__='0.62'
 
 import cadquery as cq
 from .spur_gear import SpurGear, HerringboneGear
