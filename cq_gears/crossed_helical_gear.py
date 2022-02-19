@@ -188,7 +188,7 @@ class CrossedGearPair(GearBase):
                                    align_angle)
                 
             else:
-                loc = cq.Loaction()
+                loc = cq.Location()
 
             gearset.add(gear2, name='gear2', loc=loc,
                         color=cq.Color(self.asm_gear2_color))

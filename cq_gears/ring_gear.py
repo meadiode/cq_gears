@@ -168,12 +168,65 @@ class RingGear(SpurGear):
         return wp.vals()
 
 
-    def _build(self, *args, **kv_args):
+    def _make_chamfer(self, body, chamfer=None, chamfer_top=None,
+                      chamfer_bottom=None):    
+        E = 0.01
+
+        if chamfer is None and chamfer_top is None and chamfer_bottom is None:
+            return body
+
+        if chamfer is not None:
+            if chamfer_top is None:
+                chamfer_top = chamfer
+            if chamfer_bottom is None:
+                chamfer_bottom = chamfer
+
+        if chamfer_top is not None:
+            if isinstance(chamfer_top, (list, tuple)):
+                wx, wy = chamfer_top
+            else:
+                wx, wy = chamfer_top, chamfer_top
+
+            cutter = (cq.Workplane('XZ')
+                      .moveTo(self.ra - E, self.width - wy)
+                      .vLine(wy + E)
+                      .hLine(wx + E)
+                      .close()
+                      .revolve())
+
+            body = (cq.Workplane('XY')
+                    .add(body)
+                    .cut(cutter))
+
+        if chamfer_bottom is not None:
+            if isinstance(chamfer_bottom, (list, tuple)):
+                wx, wy = chamfer_bottom
+            else:
+                wx, wy = chamfer_bottom, chamfer_bottom
+
+            cutter = (cq.Workplane('XZ')
+                      .moveTo(self.ra + wx, -E)
+                      .hLine(-wx - E)
+                      .vLine(wy + E)
+                      .close()
+                      .revolve())
+
+            body = (cq.Workplane('XY')
+                    .add(body)
+                    .cut(cutter))
+
+        return body.val()
+
+
+    def _build(self, chamfer=None, chamfer_top=None,
+               chamfer_bottom=None, *args, **kv_args):
         faces = self._build_gear_faces()
 
         shell = make_shell(faces)
         body = cq.Solid.makeSolid(shell)
-
+        
+        body = self._make_chamfer(body, chamfer, chamfer_top, chamfer_bottom)
+        
         return body
 
 
@@ -308,7 +361,15 @@ class PlanetaryGearset(GearBase):
             gearset.add(planets)
 
         if build_ring:
-            args = ring_build_args
+            if 'ring_build_args' in self.build_params:
+                in_args = self.build_params['ring_build_args']
+            else:
+                in_args = {}
+
+            args = {**self.build_params,
+                    **in_args,
+                    **kv_args,
+                    **ring_build_args}
             
             ring = self.ring.build(**args)
             loc = cq.Location(cq.Vector(0.0, 0.0, 0.0),
