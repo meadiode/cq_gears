@@ -158,6 +158,10 @@ def make_shell(faces, tol=1e-2):
 
 
 def make_cross_section_face(faces, cut_plane, int_tol=1e-7, wire_con_tol=1e-3):
+    '''Find intersecting edges between a set of faces and a plane, then attempt
+    to construct a closed wire out of the resulting edges and then attempt to
+    construct a face out of that wire.
+    '''
     ss = GeomAPI_IntSS()
     cps = BRepAdaptor_Surface(cut_plane.wrapped).Surface().Surface()
 
@@ -215,3 +219,12 @@ def make_cross_section_face(faces, cut_plane, int_tol=1e-7, wire_con_tol=1e-3):
         face = fix.Face()
 
     return cq.Face(face)
+
+
+def bounding_box(shape, tol=1e-4, optimal=False):
+    '''Like cq.Shape.BoundingBox, but allows to pass the optimal parameter.
+    Setting optimal to False(the default is True) appears to make the resulting 
+    bounding box more precise and also it makes the tol parameter useful.
+    '''
+    return cq.BoundBox._fromTopoDS(shape.wrapped, tol=tol, optimal=optimal)
+

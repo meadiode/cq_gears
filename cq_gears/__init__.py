@@ -25,7 +25,7 @@ from .ring_gear import (RingGear, HerringboneRingGear, PlanetaryGearset,
                         HerringbonePlanetaryGearset)
 from .bevel_gear import BevelGear, BevelGearPair
 from .rack_gear import RackGear, HerringboneRackGear
-from .worm_gear import Worm
+from .worm_gear import Worm, GloboidWorm
 from .crossed_helical_gear import (CrossedHelicalGear, CrossedGearPair,
                                    HyperbolicGear, HyperbolicGearPair)
 
@@ -41,6 +41,7 @@ __all__ = [
     'RackGear',
     'HerringboneRackGear',
     'Worm',
+    'GloboidWorm',
     'CrossedHelicalGear',
     'CrossedGearPair',
     'HyperbolicGear',
