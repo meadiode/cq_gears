@@ -51,15 +51,21 @@ class Report:
         self.fail_tags = Counter()
         self.fail_tags_per_test = defaultdict(Counter)
         self.fails = defaultdict(lambda: defaultdict(list))
+        self.perc_per_test = defaultdict(Counter)
         
         for test in data['tests']:
+            test_name = test['nodeid'].split('::')[-2]
+
+            self.perc_per_test[test_name]['total'] += 1
+
             if test['outcome'] == 'passed':
                 continue
-    
+
+            self.perc_per_test[test_name]['failed'] += 1
+
             tag = test['metadata']['failure_tag']
             self.fail_tags[tag] += 1
             
-            test_name = test['nodeid'].split('::')[-2]
             params = test['metadata']['gear_params']
             
             self.fails[test_name][tag].append(params)
@@ -87,6 +93,8 @@ class Report:
         header = ' ' * 26
         for tag in FAIL_TAGS:
             header = header + f'{tag:>10}'
+
+        header = header + '  % FAILED'
         
         print(header)
                 
@@ -95,7 +103,13 @@ class Report:
             for tag in FAIL_TAGS:
                 n = tags[tag]
                 line = line + f'{n:>10}'
-            
+
+            tot = self.perc_per_test[tname]['total']
+            tot_fails = self.perc_per_test[tname]['failed']
+            perc = tot_fails / tot * 100.0
+    
+            line = line + f'{perc:>10.1f}'
+
             print(line)
 
 
@@ -117,9 +131,9 @@ if __name__ == '__main__':
     reps = Report.gather_reports('./reports')
 
     print('\n')
-    for rep in reps:
+    for rep in reps[::-1]:
         rep.print_summary()
         print()
-        print('=' * 106)
-        print('=' * 106)
+        print('=' * 116)
+        print('=' * 116)
         print()

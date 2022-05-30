@@ -232,7 +232,7 @@ class Worm(GearBase):
 class GloboidWorm(GearBase):
 
     surface_splines = 20 # Number of curve splines to approximate a surface
-    t_face_parts = 1
+    t_face_parts = 2
     shell_sewing_tol = 0.1
     
     def __init__(self, module, lead_angle, n_threads, gear_n_teeth, arc_angle,
@@ -305,7 +305,7 @@ class GloboidWorm(GearBase):
     
     
     def _build_tooth_faces(self):
-        rho = np.pi * 2.0 / self.gear_n_teeth
+        rho = np.pi * 2.0 / self.gear_n_teeth * self.n_threads
         arc = self.arc_angle + rho * 2.0
         turns = int(np.ceil(arc / rho))
         
@@ -362,8 +362,16 @@ class GloboidWorm(GearBase):
                                            dir=(1.0, 0.0, 0.0))
         right_cut_plane = cq.Face.makePlane(length=cp_size, width=cp_size,
                                             basePnt=(cp_x, 0.0, 0.0),
-                                            dir=(-1.0, 0.0, 0.0))
-                
+                                           dir=(-1.0, 0.0, 0.0))
+        
+        tau = np.pi * 2.0 / self.n_threads
+        faces = []
+        
+        for th in range(self.n_threads):
+            for tf in t_faces:
+                faces.append(tf.rotate((0.0, 0.0, 0.0),
+                                       (1.0, 0.0, 0.0),
+                                       np.degrees(tau * th)))        
         def get_xmin(face):
             bb = bounding_box(face)
             return bb.xmin
@@ -376,7 +384,7 @@ class GloboidWorm(GearBase):
         
         unsplit_faces = []
         
-        for face in t_faces:
+        for face in faces:
             bb = bounding_box(face)
             
             if -cp_x <= bb.xmin and bb.xmax <= cp_x:
