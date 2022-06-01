@@ -297,6 +297,11 @@ class GloboidWorm(GearBase):
         
         self.tooth_height = abs(la) + abs(ld)
 
+        self.length = np.sin(self.arc_angle / 2.0) * self.gr_r0 * 2.0
+
+        self.end_r0 = (1.0 - np.cos(self.arc_angle / 2.0)) * self.gr_r0 + \
+                        self.r0
+
 
     def tooth_points(self):
         pts = np.concatenate((self.t_lflank_pts, self.t_tip_pts,
@@ -305,22 +310,22 @@ class GloboidWorm(GearBase):
     
     
     def _build_tooth_faces(self):
-        rho = np.pi * 2.0 / self.gear_n_teeth * self.n_threads
-        arc = self.arc_angle + rho * 2.0
-        turns = int(np.ceil(arc / rho))
+        rho0 = np.pi * 2.0 / self.gear_n_teeth
+        rho = rho0 * self.n_threads
         
+        arc = self.arc_angle + rho0 * 2.0
+        
+        turns = int(np.ceil(arc / rho))
         nparts = turns * self.t_face_parts
-        t_step = np.pi * 2.0 / self.t_face_parts
-        arc_step = rho / self.t_face_parts
+    
+        part_tf = np.linspace((0.0, -arc / 2.0),
+                              (arc / rho * np.pi * 2.0, arc / 2.0),
+                              nparts + 1)
     
         t_faces = []
-        
-        for part in range(nparts):
-            tf = np.linspace((part * t_step,
-                              -arc / 2.0 + arc_step * part),
-                             ((part + 1) * t_step,
-                              -arc / 2.0 + arc_step * (part + 1)),
-                             self.surface_splines)
+        for tf0, tf1 in zip(part_tf[:-1], part_tf[1:]):
+            
+            tf = np.linspace(tf0, tf1, self.surface_splines)
             
             for spline in (self.t_lflank_pts, self.t_tip_pts,
                            self.t_rflank_pts, self.t_root_pts):
@@ -354,8 +359,8 @@ class GloboidWorm(GearBase):
     def _build_gear_faces(self):
         t_faces = self._build_tooth_faces()
         
-        cp_x = np.cos(self.arc_angle / 2.0 - np.pi / 2.0) * self.gr_r0
-        cp_size = self.gr_r0 * 2.0 * 100.0
+        cp_x = self.length / 2.0
+        cp_size = self.gr_r0 * 2.0 * .0
         
         left_cut_plane = cq.Face.makePlane(length=cp_size, width=cp_size,
                                            basePnt=(-cp_x, 0.0, 0.0),
@@ -371,7 +376,8 @@ class GloboidWorm(GearBase):
             for tf in t_faces:
                 faces.append(tf.rotate((0.0, 0.0, 0.0),
                                        (1.0, 0.0, 0.0),
-                                       np.degrees(tau * th)))        
+                                       np.degrees(tau * th)))
+        
         def get_xmin(face):
             bb = bounding_box(face)
             return bb.xmin
@@ -429,13 +435,29 @@ class GloboidWorm(GearBase):
         
         return body.val()
 
+    
+    def _trim(self, body, trim=None):    
+        if trim is None:
+            return body
 
-    def _build(self, bore_d=None):
+        trimmer = (cq.Workplane('YZ')
+                   .circle(self.end_r0 - trim)
+                   .circle(self.end_r0 * 2.0)
+                   .extrude(self.length, both=True))
+        body = (cq.Workplane('YZ')
+                .add(body)
+                .cut(trimmer))
+        
+        return body.val()
+    
+
+    def _build(self, bore_d=None, trim=None):
         faces = self._build_gear_faces()
 
         shell = make_shell(faces, tol=self.shell_sewing_tol)
         body = cq.Solid.makeSolid(shell)
 
+        body = self._trim(body, trim)
         body = self._make_bore(body, bore_d)
 
         return body
