@@ -49,7 +49,6 @@ class GearBase:
         return self._build(**params)
 
 
-
 class SpurGear(GearBase):
 
     def __init__(self, module, teeth_number, width,
@@ -63,20 +62,18 @@ class SpurGear(GearBase):
         self.helix_angle = np.radians(helix_angle)
         self.width = width
 
-        d0 = m * z         # pitch diameter
-        adn = self.ka / (z / d0) # addendum
-        ddn = self.kd / (z / d0) # dedendum
+        self.d0 = d0 = m * z     # pitch diameter
+        self.adn = adn = self.ka / (z / d0) # addendum
+        self.ddn = ddn = self.kd / (z / d0) # dedendum
         da = d0 + 2.0 * adn # addendum circle diameter
         dd = d0 - 2.0 * ddn - 2.0 * clearance # dedendum circle diameter
-        s0 = m * (np.pi / 2.0 - backlash * np.tan(a0)) # tooth thickness on
-                                                       # the pitch circle
-        inv_a0 = np.tan(a0) - a0
-
+        self.s0 = m * (np.pi / 2.0 - backlash * np.tan(a0)) # tooth thickness on
+                                                            # the pitch circle
         self.r0 = r0 = d0 / 2.0 # pitch radius
-        self.ra = ra = da / 2.0 # addendum radius
+        self.ra = da / 2.0 # addendum radius
         self.rd = rd = dd / 2.0 # dedendum radius
         self.rb = rb = np.cos(a0) * d0 / 2.0 # base circle radius
-        self.rr = rr = max(rb, rd) # tooth root radius
+        self.rr = max(rb, rd) # tooth root radius
         self.tau = tau = np.pi * 2.0 / z # pitch angle
 
         if helix_angle != 0.0:
@@ -88,76 +85,70 @@ class SpurGear(GearBase):
 
         self.build_params = build_params
 
+
+    def tooth_profile(self):
+        
         # Calculate involute curve points for the left side of the tooth
-        r = np.linspace(rr, ra, self.curve_points)
-        cos_a = r0 / r * np.cos(a0)
+        r = np.linspace(self.rr, self.ra, self.curve_points)
+        cos_a = self.r0 / r * np.cos(self.a0)
+        
         a = np.arccos(np.clip(cos_a, -1.0, 1.0))
+        inv_a0 = np.tan(self.a0) - self.a0
         inv_a = np.tan(a) - a
-        s = r * (s0 / d0 + inv_a0 - inv_a)
+        s = r * (self.s0 / self.d0 + inv_a0 - inv_a)
         phi = s / r
-        self.t_lflank_pts = np.dstack((np.cos(phi) * r,
-                                       np.sin(phi) * r,
-                                       np.zeros(self.curve_points))).squeeze()
+        zeros = np.zeros(self.curve_points)
+
+        lflank_pts = np.dstack((np.cos(phi) * r,
+                                np.sin(phi) * r,
+                                zeros)).squeeze()
 
         # Calculate tooth tip points - an arc lying on the addendum circle
         b = np.linspace(phi[-1], -phi[-1], self.curve_points)
-        self.t_tip_pts = np.dstack((np.cos(b) * ra,
-                                    np.sin(b) * ra,
-                                    np.zeros(self.curve_points))).squeeze()
+        tip_pts = np.dstack((np.cos(b) * self.ra,
+                             np.sin(b) * self.ra,
+                             zeros)).squeeze()
 
         # Get right side involute curve points by mirroring the left side
-        self.t_rflank_pts = np.dstack(((np.cos(-phi) * r)[::-1],
-                                       (np.sin(-phi) * r)[::-1],
-                                       np.zeros(self.curve_points))).squeeze()
+        rflank_pts = np.dstack(((np.cos(-phi) * r)[::-1],
+                                (np.sin(-phi) * r)[::-1],
+                                zeros)).squeeze()
 
         # Calculate tooth root points - an arc that starts at the right side of
         # the tooth and goes to the left side of the next tooth. The mid-point
         # of that arc lies on the dedendum circle.
-        rho = tau - phi[0] * 2.0
+        rho = self.tau - phi[0] * 2.0
         # Get the three points defining the arc
-        p1 = np.array((self.t_rflank_pts[-1][0],
-                       self.t_rflank_pts[-1][1],
+        p1 = np.array((rflank_pts[-1][0],
+                       rflank_pts[-1][1],
                        0.0))
-        p2 = np.array((np.cos(-phi[0] - rho / 2.0) * rd,
-              np.sin(-phi[0] - rho / 2.0) * rd, 0.0))
-        p3 = np.array((np.cos(-phi[0] - rho) * rr,
-              np.sin(-phi[0] - rho) * rr, 0.0))
+        p2 = np.array((np.cos(-phi[0] - rho / 2.0) * self.rd,
+                       np.sin(-phi[0] - rho / 2.0) * self.rd,
+                       0.0))
+        p3 = np.array((np.cos(-phi[0] - rho) * self.rr,
+                       np.sin(-phi[0] - rho) * self.rr,
+                       0.0))
 
         # Calculate arc's center and radius
         bcr, bcxy = circle3d_by3points(p1, p2, p3)
+
         # Calculate start and end angles
         t1 = np.arctan2(p1[1] - bcxy[1], p1[0] - bcxy[0])
         t2 = np.arctan2(p3[1] - bcxy[1], p3[0] - bcxy[0])
+
         if t1 < 0.0:
             t1 += np.pi * 2.0
         if t2 < 0.0:
             t2 += np.pi * 2.0
+
         t1, t2 = min(t1, t2), max(t1, t2)
         t = np.linspace(t1 + np.pi * 2.0, t2 + np.pi * 2.0, self.curve_points)
 
-        self.t_root_pts = np.dstack((bcxy[0] + bcr * np.cos(t),
-                                     bcxy[1] + bcr * np.sin(t),
-                                     np.zeros(self.curve_points))).squeeze()
+        root_pts = np.dstack((bcxy[0] + bcr * np.cos(t),
+                              bcxy[1] + bcr * np.sin(t),
+                              zeros)).squeeze()
 
-
-    def tooth_points(self):
-        pts = np.concatenate((self.t_lflank_pts, self.t_tip_pts,
-                              self.t_rflank_pts, self.t_root_pts))
-        return pts
-
-
-    def gear_points(self):
-        tpts = np.concatenate((self.t_lflank_pts, self.t_tip_pts,
-                               self.t_rflank_pts, self.t_root_pts))
-        pts = tpts.copy()
-        angle = self.tau
-        for i in range(self.z - 1):
-            pts = np.concatenate((pts,
-                                  tpts @ rotation_matrix((0.0, 0.0, 1.0),
-                                                         angle)))
-            angle += self.tau
-
-        return pts
+        return (lflank_pts, tip_pts, rflank_pts, root_pts)
 
     
     def _build_tooth_faces(self, twist_angle_a, twist_angle_b, z_pos, width):
@@ -169,9 +160,9 @@ class SpurGear(GearBase):
                                 (twist_angle_b, z_pos + width),
                                 surf_splines)
         t_faces = []
-
-        for spline in (self.t_lflank_pts, self.t_tip_pts,
-                       self.t_rflank_pts, self.t_root_pts):
+        splines = self.tooth_profile()
+        
+        for spline in splines:
             face_pts = []
 
             for a, z in spline_tf:

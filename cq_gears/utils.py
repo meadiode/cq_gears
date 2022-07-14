@@ -223,8 +223,8 @@ def make_cross_section_face(faces, cut_plane, int_tol=1e-7, wire_con_tol=1e-3):
 
 def bounding_box(shape, tol=1e-4, optimal=False):
     '''Like cq.Shape.BoundingBox, but allows to pass the optimal parameter.
-    Setting optimal to False(the default is True) appears to make the resulting 
-    bounding box more precise and also it makes the tol parameter useful.
+    Setting optimal to Falseappears to make the resulting bounding box more
+    precise and also it makes the tol parameter useful.
     '''
     return cq.BoundBox._fromTopoDS(shape.wrapped, tol=tol, optimal=optimal)
 
