@@ -128,42 +128,82 @@ class SpurGear(GearBase, PostProcMixin):
 
         return (lflank_pts, tip_pts, rflank_pts, root_pts)
 
-    
-    def _build_tooth_faces(self, twist_angle_a, twist_angle_b, z_pos, width):
+
+    def tooth_trace_curve(self, t_start: float, t_end: float) -> np.ndarray:
         surf_splines = int(np.ceil(abs(self.twist_angle) / np.pi))
         surf_splines = max(1, surf_splines) * self.surface_splines
 
-        # Spline transformation parameters: (angle around z-axis, z-pos)
-        spline_tf = np.linspace((twist_angle_a, z_pos),
-                                (twist_angle_b, z_pos + width),
-                                surf_splines)
+        return np.linspace((t_start * self.twist_angle, t_start * self.width),
+                           (t_end * self.twist_angle, t_end * self.width),
+                           surf_splines)
+
+
+    def _build_tooth_faces(self):
         t_faces = []
         splines = self.tooth_profile()
+        seg_start = 0.0
         
-        for spline in splines:
-            face_pts = []
+        for seg_end in self.tooth_trace_curve_segments:
+            spline_tf = self.tooth_trace_curve(seg_start, seg_end)
 
-            for a, z in spline_tf:
-                r_mat = rotation_matrix((0.0, 0.0, 1.0), a)
+            for spline in splines:
+                face_pts = []
 
-                pts = spline.copy()
-                pts[:, 2] = z
-                pts = pts @ r_mat
+                for a, z in spline_tf:
+                    r_mat = rotation_matrix((0.0, 0.0, 1.0), a)
 
-                face_pts.append([cq.Vector(*pt) for pt in pts])
+                    pts = spline.copy()
+                    pts[:, 2] = z
+                    pts = pts @ r_mat
 
-            face = cq.Face.makeSplineApprox(face_pts,
-                                            tol=self.spline_approx_tol,
-                                            minDeg=self.spline_approx_min_deg,
-                                            maxDeg=self.spline_approx_max_deg)
-            t_faces.append(face)
+                    face_pts.append([cq.Vector(*pt) for pt in pts])
+
+                face = cq.Face.makeSplineApprox(face_pts,
+                                                tol=self.spline_approx_tol,
+                                                minDeg=self.spline_approx_min_deg,
+                                                maxDeg=self.spline_approx_max_deg)
+                t_faces.append(face)
+            
+            seg_start = seg_end
 
         return t_faces
 
+    
+    # def _build_tooth_faces(self, twist_angle_a, twist_angle_b, z_pos, width):
+    #     surf_splines = int(np.ceil(abs(self.twist_angle) / np.pi))
+    #     surf_splines = max(1, surf_splines) * self.surface_splines
+
+    #     # Spline transformation parameters: (angle around z-axis, z-pos)
+    #     spline_tf = np.linspace((twist_angle_a, z_pos),
+    #                             (twist_angle_b, z_pos + width),
+    #                             surf_splines)
+    #     t_faces = []
+    #     splines = self.tooth_profile()
+        
+    #     for spline in splines:
+    #         face_pts = []
+
+    #         for a, z in spline_tf:
+    #             r_mat = rotation_matrix((0.0, 0.0, 1.0), a)
+
+    #             pts = spline.copy()
+    #             pts[:, 2] = z
+    #             pts = pts @ r_mat
+
+    #             face_pts.append([cq.Vector(*pt) for pt in pts])
+
+    #         face = cq.Face.makeSplineApprox(face_pts,
+    #                                         tol=self.spline_approx_tol,
+    #                                         minDeg=self.spline_approx_min_deg,
+    #                                         maxDeg=self.spline_approx_max_deg)
+    #         t_faces.append(face)
+
+    #     return t_faces
+
 
     def _build_gear_faces(self):
-        t_faces = self._build_tooth_faces(0.0, self.twist_angle,
-                                          0.0, self.width)
+        t_faces = self._build_tooth_faces()
+
         faces = []
         for i in range(self.z):
             for tf in t_faces:
@@ -252,33 +292,19 @@ class SpurGear(GearBase, PostProcMixin):
 
 
 class HerringboneGear(SpurGear):
-
-
-    def _build_tooth_faces(self, twist_angle_a, twist_angle_b, z_pos, width):
-        t_faces1 = (super(HerringboneGear, self)
-                    ._build_tooth_faces(0.0, self.twist_angle,
-                                        0.0, self.width / 2.0))
-        t_faces2 = (super(HerringboneGear, self)
-                    ._build_tooth_faces(self.twist_angle, 0.0,
-                                        self.width / 2.0, self.width / 2.0))
-        return t_faces1 + t_faces2
-
-
-    def _remove_teeth(self, body, t1, t2):
-        plane = (cq.Workplane('XY').workplane(offset=-0.1))
-
-        cutout = (self._make_teeth_cutout_wire(plane, t1, t2, 0.0)
-                  .twistExtrude(self.width / 2.0 + 0.05,
-                                np.degrees(-self.twist_angle))
-                  .faces('>Z').workplane())
-
-        cutout = (self._make_teeth_cutout_wire(cutout, t1, t2,
-                                               -self.twist_angle)
-                  .twistExtrude(self.width / 2.0 + 0.05,
-                                np.degrees(self.twist_angle)))
+    
+    tooth_trace_curve_segments = (0.5, 1.0)
+    
+    def tooth_trace_curve(self, t_start: float, t_end: float) -> np.ndarray:
+        surf_splines = int(np.ceil(abs(self.twist_angle) / np.pi))
+        surf_splines = max(1, surf_splines) * self.surface_splines
         
-        body = (cq.Workplane('XY')
-                .add(body)
-                .cut(cutout))
+        if t_start == 0.0:
+            return np.linspace((0.0, t_start * self.width),
+                               (self.twist_angle, t_end * self.width),
+                               surf_splines)
+        else:
+            return np.linspace((self.twist_angle, t_start * self.width),
+                               (0.0, t_end * self.width),
+                               surf_splines)
 
-        return body

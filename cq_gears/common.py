@@ -41,7 +41,9 @@ class GearBase:
     working_plane = 'XY'
     axial_plane = 'XZ'
     rotation_axis = 'Z'
-    
+
+    tooth_trace_curve_segments = (1.0,)
+
     def __init__(self, *args, **kv_args):
         raise NotImplementedError('Constructor is not defined')
 
