@@ -64,7 +64,7 @@ class SpurGear(GearBase, PostProcMixin):
         self.build_params = build_params
 
 
-    def tooth_profile(self):
+    def tooth_profile(self) -> tuple(np.ndarray):
         
         # Calculate involute curve points for the left side of the tooth
         r = np.linspace(self.rr, self.ra, self.curve_points)
@@ -138,9 +138,8 @@ class SpurGear(GearBase, PostProcMixin):
                            surf_splines)
 
 
-    def _build_tooth_faces(self):
+    def _extrude_faces(self, splines: tuple[np.ndarray]) -> list[cq.Face]:
         t_faces = []
-        splines = self.tooth_profile()
         seg_start = 0.0
         
         for seg_end in self.tooth_trace_curve_segments:
@@ -158,47 +157,20 @@ class SpurGear(GearBase, PostProcMixin):
 
                     face_pts.append([cq.Vector(*pt) for pt in pts])
 
-                face = cq.Face.makeSplineApprox(face_pts,
-                                                tol=self.spline_approx_tol,
-                                                minDeg=self.spline_approx_min_deg,
-                                                maxDeg=self.spline_approx_max_deg)
+                face = cq.Face.makeSplineApprox(
+                                            face_pts,
+                                            tol=self.spline_approx_tol,
+                                            minDeg=self.spline_approx_min_deg,
+                                            maxDeg=self.spline_approx_max_deg)
                 t_faces.append(face)
             
             seg_start = seg_end
 
-        return t_faces
+        return t_faces        
 
-    
-    # def _build_tooth_faces(self, twist_angle_a, twist_angle_b, z_pos, width):
-    #     surf_splines = int(np.ceil(abs(self.twist_angle) / np.pi))
-    #     surf_splines = max(1, surf_splines) * self.surface_splines
 
-    #     # Spline transformation parameters: (angle around z-axis, z-pos)
-    #     spline_tf = np.linspace((twist_angle_a, z_pos),
-    #                             (twist_angle_b, z_pos + width),
-    #                             surf_splines)
-    #     t_faces = []
-    #     splines = self.tooth_profile()
-        
-    #     for spline in splines:
-    #         face_pts = []
-
-    #         for a, z in spline_tf:
-    #             r_mat = rotation_matrix((0.0, 0.0, 1.0), a)
-
-    #             pts = spline.copy()
-    #             pts[:, 2] = z
-    #             pts = pts @ r_mat
-
-    #             face_pts.append([cq.Vector(*pt) for pt in pts])
-
-    #         face = cq.Face.makeSplineApprox(face_pts,
-    #                                         tol=self.spline_approx_tol,
-    #                                         minDeg=self.spline_approx_min_deg,
-    #                                         maxDeg=self.spline_approx_max_deg)
-    #         t_faces.append(face)
-
-    #     return t_faces
+    def _build_tooth_faces(self):
+        return self._extrude_faces(self.tooth_profile()) 
 
 
     def _build_gear_faces(self):
@@ -221,64 +193,6 @@ class SpurGear(GearBase, PostProcMixin):
         wp = wp.add(topface).add(botface)
 
         return wp.vals()
-
-
-    def _make_teeth_cutout_wire(self, plane, t1, t2, twist_angle):
-        at1 = t1 * self.tau + self.tau / 2.0 + twist_angle
-        at2 = t2 * self.tau + self.tau / 2.0 + twist_angle
-        p1x = np.cos(at1)
-        p1y = np.sin(at1)
-        p2x = np.cos((at1 + at2) / 2.0)
-        p2y = np.sin((at1 + at2) / 2.0)
-        p3x = np.cos(at2)
-        p3y = np.sin(at2)
-        rc = self.ra + 1.0
-        rd = self.rd - 0.01
-
-        res = (plane
-               .moveTo(p1x * rd, p1y * rd)
-               .lineTo(p1x * rc, p1y * rc)
-               .threePointArc((p2x * rc, p2y * rc), (p3x * rc, p3y * rc))
-               .lineTo(p3x * rd, p3y * rd)
-               .threePointArc((p2x * rd, p2y * rd),
-                              (p1x * rd, p1y * rd))
-               .close())
-
-        return res
-
-
-    def _remove_teeth(self, body, t1, t2):
-        plane = (cq.Workplane('XY').workplane(offset=-0.1)
-                 .add(body))
-
-        if self.twist_angle == 0.0:
-            cutout = (self._make_teeth_cutout_wire(plane, t1, t2, 0.0)
-                      .extrude(self.width + 0.2, combine=False))
-        else:
-            cutout = (self._make_teeth_cutout_wire(plane, t1, t2, 0.0)
-                      .twistExtrude(self.width + 0.2,
-                                    np.degrees(-self.twist_angle),
-                                    combine=False))
-
-        body = (cq.Workplane('XY')
-                .add(body)
-                .cut(cutout)).val()
-
-        return body
-
-
-    def _make_missing_teeth(self, body, missing_teeth):
-        if missing_teeth is None:
-            return body
-
-        if isinstance(missing_teeth[0], (list, tuple)):
-            for t1, t2 in missing_teeth:
-                body = self._remove_teeth(body, t1, t2)
-        else:
-            t1, t2 = missing_teeth
-            body = self._remove_teeth(body, t1, t2)
-
-        return body
 
 
     def _build(self, **kv_args):

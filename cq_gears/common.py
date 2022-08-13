@@ -23,6 +23,8 @@ import numpy as np
 import cadquery as cq
 from inspect import signature
 
+from .utils import make_shell
+
 
 class GearBase:
     ka = 1.0  # Addendum coefficient
@@ -62,6 +64,7 @@ class PostProcMixin:
         'hub',
         'spokes',
         'chamfer',
+        'missing_teeth',
     )
 
     def _post_process(self, body: cq.Solid, **params) -> cq.Solid:
@@ -235,3 +238,72 @@ class PostProcMixin:
             
             
         return body.val()
+
+
+    def _remove_teeth(self, body, t1, t2, cutout_radius):
+        at1 = t1 * self.tau + self.tau / 2.0
+        at2 = t2 * self.tau + self.tau / 2.0
+        p1x = np.cos(at1)
+        p1y = np.sin(at1)
+        p3x = np.cos(at2)
+        p3y = np.sin(at2)
+        rc = self.ra + 1.0
+        rd = cutout_radius
+                
+        alphas = np.linspace(at1, at2, self.curve_points)
+        
+        rad1 = np.array(((p1x * rd, p1y * rd, 0.0),
+                         (p1x * rc, p1y * rc, 0.0)))
+        
+        arc1 = np.dstack((np.cos(alphas) * rc,
+                          np.sin(alphas) * rc,
+                          np.full(self.curve_points, 0.0))).squeeze()
+        
+        rad2 = np.array(((p3x * rc, p3y * rc, 0.0),
+                         (p3x * rd, p3y * rd, 0.0)))
+        
+        arc2 = np.dstack((np.cos(alphas) * rd,
+                          np.sin(alphas) * rd,
+                          np.full(self.curve_points, 0.0))).squeeze()
+        
+        faces = self._extrude_faces((rad1, arc1, rad2, arc2))
+        
+        wp = cq.Workplane(self.working_plane).add(faces)
+        
+        topface_wires = cq.Wire.combine(
+                                wp.edges('<' + self.rotation_axis).vals(),
+                                tol=self.wire_comb_tol)
+        topface = cq.Face.makeFromWires(topface_wires[0])
+        botface_wires = cq.Wire.combine(
+                                wp.edges('>' + self.rotation_axis).vals(),
+                                tol=self.wire_comb_tol)
+        botface = cq.Face.makeFromWires(botface_wires[0])
+        faces.append(topface)
+        faces.append(botface)
+        
+        shell = make_shell(faces, tol=self.shell_sewing_tol)
+        cutter = cq.Solid.makeSolid(shell)
+        
+        wp = cq.Workplane(self.working_plane).add(body).cut(cutter)
+
+        return wp.val()
+
+
+    def missing_teeth(self, body: cq.Solid,
+                      missing_teeth: tuple[int] | tuple[tuple[int]] | None,
+                      cutout_radius: float | None) -> cq.Solid:
+        
+        if missing_teeth is None:
+            return body
+
+        if cutout_radius is None:
+            cutout_radius = self.rd
+
+        if isinstance(missing_teeth[0], (list, tuple)):
+            for t1, t2 in missing_teeth:
+                body = self._remove_teeth(body, t1, t2, cutout_radius)
+        else:
+            t1, t2 = missing_teeth
+            body = self._remove_teeth(body, t1, t2, cutout_radius)
+
+        return body
