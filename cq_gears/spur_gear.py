@@ -24,7 +24,8 @@ import cadquery as cq
 from inspect import signature
 
 from .utils import circle3d_by3points, rotation_matrix, make_shell
-from .common import GearBase, PostProcMixin
+from .common import GearBase
+from .postprocess import PostProcMixin
 
 
 class SpurGear(GearBase, PostProcMixin):

@@ -23,10 +23,12 @@ import cadquery as cq
 import warnings
 
 from .utils import circle3d_by3points, rotation_matrix, make_shell
-from .spur_gear import GearBase, SpurGear, HerringboneGear
+from .spur_gear import SpurGear, HerringboneGear
+from .common import GearBase
+from .postprocess import RingPostProcMixin
 
 
-class RingGear(SpurGear):
+class RingGear(SpurGear, RingPostProcMixin):
 
     def __init__(self, module, teeth_number, width, rim_width,
                  pressure_angle=20.0, helix_angle=0.0, clearance=0.0,
@@ -129,15 +131,8 @@ class RingGear(SpurGear):
         return face
 
 
-    def _build_faces(self):
-        faces = super(RingGear, self)._build_faces()
-        faces.append(self._build_rim_face())
-
-        return faces
-
     def _build_gear_faces(self):
-        t_faces = self._build_tooth_faces(0.0, self.twist_angle,
-                                          0.0, self.width)
+        t_faces = self._build_tooth_faces()
         faces = []
         for i in range(self.z):
             for tf in t_faces:
@@ -160,84 +155,24 @@ class RingGear(SpurGear):
                                               cq.Vector(0.0, 0.0, 1.0))
         botface = cq.Face.makeFromWires(botface_rim_wire, botface_wires)
         wp = wp.add(topface).add(botface)
-        wp = wp.add(self._build_rim_face())
-
-        return wp.vals()
-
-
-    def _make_chamfer(self, body, chamfer=None, chamfer_top=None,
-                      chamfer_bottom=None):    
-        E = 0.01
-
-        if chamfer is None and chamfer_top is None and chamfer_bottom is None:
-            return body
-
-        if chamfer is not None:
-            if chamfer_top is None:
-                chamfer_top = chamfer
-            if chamfer_bottom is None:
-                chamfer_bottom = chamfer
-
-        if chamfer_top is not None:
-            if isinstance(chamfer_top, (list, tuple)):
-                wx, wy = chamfer_top
-            else:
-                wx, wy = chamfer_top, chamfer_top
-
-            cutter = (cq.Workplane('XZ')
-                      .moveTo(self.ra - E, self.width - wy)
-                      .vLine(wy + E)
-                      .hLine(wx + E)
-                      .close()
-                      .revolve())
-
-            body = (cq.Workplane('XY')
-                    .add(body)
-                    .cut(cutter))
-
-        if chamfer_bottom is not None:
-            if isinstance(chamfer_bottom, (list, tuple)):
-                wx, wy = chamfer_bottom
-            else:
-                wx, wy = chamfer_bottom, chamfer_bottom
-
-            cutter = (cq.Workplane('XZ')
-                      .moveTo(self.ra + wx, -E)
-                      .hLine(-wx - E)
-                      .vLine(wy + E)
-                      .close()
-                      .revolve())
-
-            body = (cq.Workplane('XY')
-                    .add(body)
-                    .cut(cutter))
-
-        return body.val()
-
-
-    def _build(self, chamfer=None, chamfer_top=None,
-               chamfer_bottom=None, *args, **kv_args):
-        faces = self._build_gear_faces()
-
-        shell = make_shell(faces)
-        body = cq.Solid.makeSolid(shell)
         
-        body = self._make_chamfer(body, chamfer, chamfer_top, chamfer_bottom)
-        
-        return body
+        faces = wp.vals()
+
+        w1 = cq.Wire.makeCircle(self.rim_r,
+                                cq.Vector(0.0, 0.0, 0.0),
+                                cq.Vector(0.0, 0.0, 1.0))
+        w2 = cq.Wire.makeCircle(self.rim_r,
+                                cq.Vector(0.0, 0.0, self.width),
+                                cq.Vector(0.0, 0.0, 1.0))
+
+        rim_face = cq.Face.makeRuledSurface(w1, w2)
+        faces.append(rim_face)
+
+        return faces
 
 
-class HerringboneRingGear(RingGear):
-
-
-    def _build_tooth_faces(self, twist_angle_a, twist_angle_b, z_pos, width):
-        t_faces1 = (super(HerringboneRingGear, self)
-                    ._build_tooth_faces(0.0, self.twist_angle,
-                                        0.0, self.width / 2.0))
-        t_faces2 = (super(HerringboneRingGear, self)
-                    ._build_tooth_faces(self.twist_angle, 0.0,
-                                        self.width / 2.0, self.width / 2.0))
-        return t_faces1 + t_faces2
+class HerringboneRingGear(HerringboneGear, RingGear):
+    pass
 
 
 class PlanetaryGearset(GearBase):
