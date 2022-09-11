@@ -16,6 +16,7 @@ class TestRegression:
         vol = body.Volume()
         bb = body.BoundingBox()
 
+        assert body.isValid(), 'Body is not valid'
         assert vol - TOL <= expected['volume'] <= vol + TOL,\
               'Volume check failed'
         assert bb.xlen - TOL <= expected['bbox'][0] <= bb.xlen + TOL,\
