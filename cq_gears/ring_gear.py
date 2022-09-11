@@ -227,10 +227,10 @@ class PlanetaryGearset(GearBase):
 
 
     def assemble(self, build_sun=True, build_planets=True, build_ring=True,
-                 sun_build_args={}, planet_build_args={},
+                 name='planetary', sun_build_args={}, planet_build_args={},
                  ring_build_args={}, **kv_args):
 
-        gearset = cq.Assembly(name='planetary')
+        gearset = cq.Assembly(name=name)
 
         if build_sun:
             if 'sun_build_args' in self.build_params:

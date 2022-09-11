@@ -18,6 +18,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 '''
 
+from __future__ import annotations
 import numpy as np
 import cadquery as cq
 
@@ -25,6 +26,7 @@ from .utils import (circle3d_by3points, rotation_matrix, s_inv, s_arc,
                     angle_between, sphere_to_cartesian, make_shell)
 
 from .spur_gear import GearBase
+from .postprocess import PostProcMixin
 
 
 class BevelGear(GearBase):
@@ -83,75 +85,85 @@ class BevelGear(GearBase):
         phi_r = s_inv(gamma_b, gamma_p);
         self.mp_theta = mp_theta = np.pi / z + 2.0 * phi_r
 
+
+    def tooth_profile(self) -> tuple(np.ndarray):
         # Tooth left flank curve points
-        gamma_tr = max(gamma_b, gamma_r)
-        gamma = np.linspace(gamma_tr, gamma_f, self.curve_points)
-        theta = s_inv(gamma_b, gamma)
-        self.t_lflank_pts = np.dstack(sphere_to_cartesian(1.0,
-                                                          gamma,
-                                                          theta)).squeeze()
+        gamma_tr = max(self.gamma_b, self.gamma_r)
+        gamma = np.linspace(gamma_tr, self.gamma_f, self.curve_points)
+        theta = s_inv(self.gamma_b, gamma)
+        
+        lflank_pts = np.dstack(sphere_to_cartesian(1.0,
+                                                   gamma,
+                                                   theta)).squeeze()
         # Tooth tip curve points
         theta_tip = np.linspace(theta[-1],
-                                mp_theta - theta[-1],
+                                self.mp_theta - theta[-1],
                                 self.curve_points)
-        self.t_tip_pts = np.dstack(
-                            sphere_to_cartesian(1.0,
+        tip_pts = np.dstack(sphere_to_cartesian(1.0,
                                                 np.full(self.curve_points,
-                                                        gamma_f),
+                                                        self.gamma_f),
                                                 theta_tip)).squeeze()
 
         # Get the right flank curve points
-        self.t_rflank_pts = np.dstack(
-                        sphere_to_cartesian(1.0,
-                                            gamma[::-1],
-                                            mp_theta - theta[::-1])).squeeze()
+        rflank_pts = np.dstack(
+                    sphere_to_cartesian(1.0,
+                                        gamma[::-1],
+                                        self.mp_theta - theta[::-1])).squeeze()
  
         # Tooth root curve points
-        if gamma_r < gamma_b:
-            p1 = self.t_rflank_pts[-1]
-            p2 = np.array(sphere_to_cartesian(1.0, gamma_b, theta[0] + tau))
-            p3 = np.array(sphere_to_cartesian(1.0, gamma_r,
-                                              (tau + mp_theta) / 2.0))
+        if self.gamma_r < self.gamma_b:
+            p1 = rflank_pts[-1]
+            p2 = np.array(sphere_to_cartesian(1.0,
+                                              self.gamma_b,
+                                              theta[0] + self.tau))
+            p3 = np.array(sphere_to_cartesian(1.0,
+                                              self.gamma_r,
+                                              (self.tau + self.mp_theta) / 2.0))
             rr, rcc = circle3d_by3points(p1, p2, p3)
             rcc_gamma = np.arccos(np.dot(p3, rcc) / \
                                   (np.linalg.norm(p3) * np.linalg.norm(rcc)))
             p1p3 = angle_between(rcc, p1, p3)
             a_start = (np.pi - p1p3 * 2.0) / 2.0
             a_end = -a_start + np.pi
-            self.t_root_pts = np.dstack(s_arc(1.0, gamma_r + rcc_gamma,
-                                              (tau + mp_theta) / 2.0,
-                                              rcc_gamma,
-                                              np.pi / 2.0 + a_start,
-                                              np.pi / 2.0 + a_end,
-                                              self.curve_points)).squeeze()
+            root_pts = np.dstack(s_arc(1.0, self.gamma_r + rcc_gamma,
+                                       (self.tau + self.mp_theta) / 2.0,
+                                       rcc_gamma,
+                                       np.pi / 2.0 + a_start,
+                                       np.pi / 2.0 + a_end,
+                                       self.curve_points)).squeeze()
         else:
-            r_theta = np.linspace(mp_theta - theta[0],
-                                  theta[0] + tau, self.curve_points)
-            self.t_root_pts = np.dstack(
-                                sphere_to_cartesian(1.0,
-                                                    np.full(self.curve_points,
-                                                            gamma_tr),
-                                                    r_theta)).squeeze()
+            r_theta = np.linspace(self.mp_theta - theta[0],
+                                  theta[0] + self.tau,
+                                  self.curve_points)
+            root_pts = np.dstack(
+                            sphere_to_cartesian(1.0,
+                                                np.full(self.curve_points,
+                                                        gamma_tr),
+                                                r_theta)).squeeze()
+
+        return (lflank_pts, tip_pts, rflank_pts, root_pts)
 
 
-    def tooth_points(self):
-        pts = np.concatenate((self.t_lflank_pts, self.t_tip_pts,
-                              self.t_rflank_pts, self.t_root_pts))
-        return pts
+    def tooth_trace_curve(self, t_start: float, t_end: float) -> np.ndarray:
+        surf_splines = int(np.ceil(abs(self.twist_angle) / np.pi))
+        surf_splines = max(1, surf_splines) * self.surface_splines
 
-    
-    def gear_points(self):
-        tpts = np.concatenate((self.t_lflank_pts, self.t_tip_pts,
-                               self.t_rflank_pts, self.t_root_pts))
-        pts = tpts.copy()
-        angle = self.tau
-        for i in range(self.z - 1):
-            pts = np.concatenate((pts,
-                                  tpts @ rotation_matrix((0.0, 0.0, 1.0),
-                                                         angle)))
-            angle += self.tau
-        
-        return pts
+        pc_h = np.cos(self.gamma_r) * self.gs_r # pitch cone height
+        pc_f = pc_h / np.cos(self.gamma_f) # extended pitch cone flank length
+        pc_rb = pc_f * np.sin(self.gamma_f) # pitch cone base radius
+
+        # top cone height
+        tc_h = np.cos(self.gamma_f) * (self.gs_r - self.face_width)
+        tc_f = tc_h / np.cos(self.gamma_r) # top cone flank length
+        tc_rb = tc_f * np.sin(self.gamma_f) # top cone base radius
+
+        # start/stop twist angle
+        ta1 = -(pc_f - self.gs_r) / self.face_width * self.twist_angle
+        ta2 = (self.gs_r - tc_f) / self.face_width * self.twist_angle
+
+        return np.linspace((t_start * self.twist_angle, t_start * self.width),
+                           (t_end * self.twist_angle, t_end * self.width),
+                           surf_splines)
 
 
     def _build_tooth_faces(self):
