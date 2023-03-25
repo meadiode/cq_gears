@@ -20,7 +20,7 @@ limitations under the License.
 __version__='0.62'
 
 import cadquery as cq
-from .spur_gear import SpurGear, HerringboneGear
+from .spur_gear import SpurGear, HerringboneGear, CustomTwistGear
 from .ring_gear import (RingGear, HerringboneRingGear, PlanetaryGearset,
                         HerringbonePlanetaryGearset)
 from .bevel_gear import BevelGear, BevelGearPair
@@ -32,6 +32,7 @@ from .crossed_helical_gear import (CrossedHelicalGear, CrossedGearPair,
 __all__ = [
     'SpurGear',
     'HerringboneGear',
+    'CustomTwistGear',
     'RingGear',
     'HerringboneRingGear',
     'PlanetaryGearset',

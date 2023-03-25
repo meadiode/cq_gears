@@ -1,7 +1,7 @@
 
 import numpy as np
 import cadquery as cq
-from cq_gears import SpurGear, HerringboneGear
+from cq_gears import SpurGear, HerringboneGear, CustomTwistGear
 
 from utils import (BuildFailure, SolidBuildFailure, VolumeCheckFailure,
                    BBoxZCheckFailure, BBoxXYCheckFailure)
@@ -93,3 +93,7 @@ class TestSpurGear(_TestGear):
 
 class TestHerringboneGear(TestSpurGear):
     gear_cls = HerringboneGear
+
+
+class TestCustomTwistGear(TestSpurGear):
+    gear_cls = CustomTwistGear

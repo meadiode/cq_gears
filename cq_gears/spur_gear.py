@@ -479,6 +479,60 @@ class HerringboneGear(SpurGear):
         
         body = (cq.Workplane('XY')
                 .add(body)
-                .cut(cutout))
+                .cut(cutout)).val()
+
+        return body
+
+
+class CustomTwistGear(SpurGear):
+
+    def __init__(self, module, teeth_number, width, twist_function, twist_angle,
+                 pressure_angle=20.0, clearance=0.0,
+                 backlash=0.0, **build_params):
+        super(CustomTwistGear, self).__init__(module=module, teeth_number=teeth_number,
+                                              width=width, pressure_angle=pressure_angle,
+                                              clearance=clearance, backlash=backlash, **build_params)
+        self.twist_function = twist_function
+        self.twist_angle = np.radians(twist_angle)
+
+
+    def _build_tooth_faces(self, twist_angle_a, twist_angle_b, z_pos, width):
+        t_rotations = [
+            self.twist_angle * self.twist_function(t)
+            for t in np.linspace(0, 1, self.curve_points)
+        ]
+        num_segments = len(t_rotations) - 1
+        t_faces = sum([
+            super(CustomTwistGear, self)._build_tooth_faces(
+                t_rotations[i],
+                t_rotations[i+1],
+                i * width / num_segments,
+                width / num_segments
+            )
+            for i in range(num_segments)
+        ], [])
+        return t_faces
+
+
+    def _remove_teeth(self, body, t1, t2):
+
+        def _helix_point(t):
+            angle = self.twist_angle * self.twist_function(t)
+            return np.cos(angle), -np.sin(angle), t * (self.width + 0.2)
+
+        plane = (cq.Workplane('XY').workplane(offset=-0.1))
+
+        cutout = (self._make_teeth_cutout_wire(plane, t1, t2, 0.0)
+                  .sweep(
+                    path=cq.Workplane('XZ').vLine(self.width + 0.2),
+                    auxSpine=(cq.Workplane('XY')
+                              .parametricCurve(_helix_point,
+                                               N=self.curve_points,
+                                               start=0, stop=1.0))
+                ))
+
+        body = (cq.Workplane('XY')
+                .add(body)
+                .cut(cutout)).val()
 
         return body
