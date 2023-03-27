@@ -223,3 +223,25 @@ class HerringboneGear(SpurGear):
                                (0.0, t_end * self.width),
                                surf_splines)
 
+
+class CustomTwistGear(SpurGear):
+
+    def __init__(self, module, teeth_number, width, twist_function, twist_angle,
+                 pressure_angle=20.0, clearance=0.0,
+                 backlash=0.0, **build_params):
+
+        super(CustomTwistGear, self).__init__(module=module, teeth_number=teeth_number,
+                                              width=width, pressure_angle=pressure_angle,
+                                              clearance=clearance, backlash=backlash, **build_params)
+        self.twist_function = twist_function
+        self.twist_angle = np.radians(twist_angle)
+
+    # redefining tooth_trace_curve method
+    def tooth_trace_curve(self, t_start: float, t_end: float) -> np.ndarray:
+        t = np.linspace(t_start, t_end, self.curve_points)
+
+        # using user provided function to calculate curve's polar angles
+        angles = self.twist_function(t) * self.twist_angle
+        zs = t * self.width
+
+        return np.dstack((angles, zs)).squeeze()
