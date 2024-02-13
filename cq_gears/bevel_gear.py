@@ -86,7 +86,7 @@ class BevelGear(GearBase):
         # Tooth left flank curve points
         gamma_tr = max(gamma_b, gamma_r)
         gamma = np.linspace(gamma_tr, gamma_f, self.curve_points)
-        theta = s_inv(gamma_b, gamma)
+        theta = s_inv(gamma_b, gamma) + backlash / (module * teeth_number)
         self.t_lflank_pts = np.dstack(sphere_to_cartesian(1.0,
                                                           gamma,
                                                           theta)).squeeze()
@@ -339,7 +339,7 @@ class BevelGearPair(GearBase):
     
     def __init__(self, module, gear_teeth, pinion_teeth, face_width,
                  axis_angle=90.0, pressure_angle=20.0, helix_angle=0.0,
-                 clearance=0.0, **build_params):
+                 clearance=0.0, backlash=0.0, **build_params):
         
         self.axis_angle = axis_angle = np.radians(axis_angle)
         
@@ -354,11 +354,11 @@ class BevelGearPair(GearBase):
         
         self.gear = self.gear_cls(module, gear_teeth, np.degrees(delta_gear),
                                   face_width, pressure_angle, helix_angle,
-                                  clearance)
+                                  clearance, backlash)
         
         self.pinion = self.gear_cls(module, pinion_teeth,
                                     np.degrees(delta_pinion), face_width,
-                                    pressure_angle, -helix_angle)
+                                    pressure_angle, -helix_angle, backlash=backlash)
         self.build_params = build_params
 
 
