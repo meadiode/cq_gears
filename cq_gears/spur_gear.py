@@ -293,8 +293,11 @@ class SpurGear(GearBase):
             return body
 
         if recess is not None:
-            assert recess_d is not None, 'Front recess diameter is not set'
+            assert recess_d is not None, 'Top face recess diameter is not set'
 
+        if bottom_recess is not None:
+            assert bottom_recess_d is not None or recess_d is not None, 'Bottom face recess diameter is not set'
+        
         if recess:
             body = (cq.Workplane('XY')
                     .add(body)
