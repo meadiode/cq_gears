@@ -287,21 +287,43 @@ class SpurGear(GearBase):
         return body
 
 
-    def _make_recess(self, body, hub_d, recess_d, recess):
-        if recess is None:
+    def _make_recess(self, body, hub_d, recess_d, recess=None, bottom_recess=None,
+                 bottom_hub_d=None, bottom_recess_d=None):
+        if recess is None and bottom_recess is None:
             return body
 
-        assert recess_d is not None, 'Recess diameter is not set'
+        if recess is not None:
+            assert recess_d is not None, 'Top face recess diameter is not set'
 
-        body = (cq.Workplane('XY')
-                .add(body)
-                .faces('>Z')
-                .workplane())
+        if bottom_recess is not None:
+            assert bottom_recess_d is not None or recess_d is not None, 'Bottom face recess diameter is not set'
+        
+        if recess:
+            body = (cq.Workplane('XY')
+                    .add(body)
+                    .faces('>Z')  
+                    .workplane())
+        
+            if hub_d is not None:
+                body = body.circle(hub_d / 2.0)
 
-        if hub_d is not None:
-            body = body.circle(hub_d / 2.0)
+            body = body.circle(recess_d / 2.0).cutBlind(-recess).val()
 
-        body = body.circle(recess_d / 2.0).cutBlind(-recess).val()
+        if bottom_recess:
+            body = (cq.Workplane('XY')
+                    .add(body)
+                    .faces('<Z')  
+                    .workplane())
+
+            if bottom_hub_d is None:
+                bottom_hub_d = hub_d  
+            if bottom_recess_d is None:
+                bottom_recess_d = recess_d  
+
+            if bottom_hub_d is not None:
+                body = body.circle(bottom_hub_d / 2.0)
+
+            body = body.circle(bottom_recess_d / 2.0).cutBlind(-bottom_recess).val()
 
         return body
 
@@ -424,6 +446,7 @@ class SpurGear(GearBase):
 
     def _build(self, bore_d=None, missing_teeth=None,
                hub_d=None, hub_length=None, recess_d=None, recess=None,
+               bottom_recess=None, bottom_recess_d=None, bottom_hub_d=None,
                n_spokes=None, spoke_width=None, spoke_fillet=None,
                spokes_id=None, spokes_od=None, chamfer=None, chamfer_top=None,
                chamfer_bottom=None, *args, **kv_args):
@@ -435,7 +458,10 @@ class SpurGear(GearBase):
             body = self._make_chamfer(body, chamfer, chamfer_top, chamfer_bottom)
             body = self._make_bore(body, bore_d)
             body = self._make_missing_teeth(body, missing_teeth)
-            body = self._make_recess(body, hub_d, recess_d, recess)
+            body = self._make_recess(body, hub_d, recess_d, recess,
+                             bottom_recess=bottom_recess,
+                             bottom_hub_d=bottom_hub_d,
+                             bottom_recess_d=bottom_recess_d)
             body = self._make_hub(body, hub_d, hub_length, bore_d)
             
             if spokes_id is None:
