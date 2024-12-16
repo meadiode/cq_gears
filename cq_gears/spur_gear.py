@@ -54,7 +54,15 @@ class SpurGear(GearBase):
 
     def __init__(self, module, teeth_number, width,
                  pressure_angle=20.0, helix_angle=0.0, clearance=0.0,
-                 backlash=0.0, **build_params):
+                 backlash=0.0, addendum_coeff=None, dedendum_coeff=None, **build_params):
+
+        if addendum_coeff is not None and addendum_coeff <= 0:
+            raise ValueError("Addendum coefficient (addendum_coeff) must be greater than 0.")
+        if dedendum_coeff is not None and dedendum_coeff <= 0:
+            raise ValueError("Dedendum coefficient (dedendum_coeff) must be greater than 0.")
+
+        self.ka = addendum_coeff if addendum_coeff is not None else self.ka
+        self.kd = dedendum_coeff if dedendum_coeff is not None else self.kd         
         self.m = m = module
         self.z = z = teeth_number
         self.a0 = a0 = np.radians(pressure_angle)
@@ -66,6 +74,12 @@ class SpurGear(GearBase):
         d0 = m * z         # pitch diameter
         adn = self.ka / (z / d0) # addendum
         ddn = self.kd / (z / d0) # dedendum
+
+        if 2.0 * ddn + 2.0 * clearance >= d0:
+            raise ValueError(
+                "Invalid dedendum or clearance: resulting dedendum circle diameter is negative or zero."
+            )
+
         da = d0 + 2.0 * adn # addendum circle diameter
         dd = d0 - 2.0 * ddn - 2.0 * clearance # dedendum circle diameter
         s0 = m * (np.pi / 2.0 - backlash * np.tan(a0)) # tooth thickness on
